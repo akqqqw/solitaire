@@ -213,6 +213,13 @@ describe('Пирамида: победа, подсказки, валидация
     const brokenDiscard = structuredClone(state) as PyramidState;
     brokenDiscard.discard.push({ card: { ...state.pyramid[0][0].card }, faceUp: true });
     expect(pyramidModule.isValidState(brokenDiscard)).toBe(false);
+    const falseWin = structuredClone(state) as PyramidState;
+    falseWin.removed = Array.from({ length: 7 }, (_, row) =>
+      Array.from({ length: row + 1 }, () => true),
+    );
+    expect(pyramidModule.isValidState(falseWin)).toBe(false);
+    falseWin.won = true;
+    expect(pyramidModule.isValidState(falseWin)).toBe(true);
   });
 });
 

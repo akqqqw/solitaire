@@ -378,6 +378,8 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
     for (const item of s.discard) {
       if (!item || typeof item !== 'object' || !add(item.card)) return false;
     }
+    const allRemoved = s.removed.every((row) => row.every(Boolean));
+    if (s.won !== allRemoved) return false;
     return total === 52;
   },
 };
