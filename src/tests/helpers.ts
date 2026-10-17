@@ -286,6 +286,7 @@ export function pyramidFixture(fixture: PyramidFixture = {}): PyramidState {
     removed,
     stock,
     waste,
+    discard: [],
     moves: 0,
     score: 0,
     won: false,

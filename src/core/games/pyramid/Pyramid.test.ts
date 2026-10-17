@@ -120,7 +120,15 @@ describe('Пирамида: удаление карт', () => {
     });
     expect(next.removed[6][0]).toBe(true);
     expect(next.waste).toHaveLength(0);
+    expect(next.discard).toHaveLength(1);
+    expect(pyramidModule.isValidState(next)).toBe(true);
     expect(next.score).toBe(10);
+
+    const fromKing = pyramidFixture({ waste: ['Qs', 'Kh'] });
+    const kingNext = applyPyramidMove(fromKing, { type: 'remove', a: { zone: 'waste' } });
+    expect(kingNext.discard.map((item) => item.card.id)).toEqual(['hearts-13-0']);
+    expect(kingNext.waste.map((item) => item.card.id)).toEqual(['spades-12-0']);
+    expect(pyramidModule.isValidState(kingNext)).toBe(true);
   });
 
   it('запрещает брать закрытую карту пирамиды', () => {
@@ -199,6 +207,12 @@ describe('Пирамида: победа, подсказки, валидация
     const dup = structuredClone(state) as PyramidState;
     dup.stock[0] = dup.pyramid[0][0];
     expect(pyramidModule.isValidState(dup)).toBe(false);
+    const oldSave = structuredClone(state) as PyramidState;
+    delete (oldSave as Partial<PyramidState>).discard;
+    expect(pyramidModule.isValidState(oldSave)).toBe(false);
+    const brokenDiscard = structuredClone(state) as PyramidState;
+    brokenDiscard.discard.push({ card: { ...state.pyramid[0][0].card }, faceUp: true });
+    expect(pyramidModule.isValidState(brokenDiscard)).toBe(false);
   });
 });
 

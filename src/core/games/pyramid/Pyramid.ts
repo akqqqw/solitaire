@@ -20,6 +20,8 @@ export interface PyramidState extends GameStateBase {
   removed: boolean[][];
   stock: PlacedCard[];
   waste: PlacedCard[];
+  /** Убранные из сброса карты: хранятся, чтобы проверять целостность колоды. */
+  discard: PlacedCard[];
   cycles: number;
 }
 
@@ -38,6 +40,7 @@ function createEmpty(seed: string): PyramidState {
     ),
     stock: [],
     waste: [],
+    discard: [],
     moves: 0,
     score: 0,
     won: false,
@@ -156,7 +159,8 @@ function removeRef(state: PyramidState, ref: PyramidRef): void {
   if (ref.zone === 'pyramid') {
     state.removed[ref.row][ref.col] = true;
   } else {
-    state.waste.pop();
+    const item = state.waste.pop();
+    if (item) state.discard.push(item);
   }
 }
 
@@ -330,6 +334,7 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
     if (!Array.isArray(s.pyramid) || s.pyramid.length !== ROWS) return false;
     if (!Array.isArray(s.removed) || s.removed.length !== ROWS) return false;
     if (!Array.isArray(s.stock) || !Array.isArray(s.waste)) return false;
+    if (!Array.isArray(s.discard)) return false;
     if (typeof s.moves !== 'number' || typeof s.score !== 'number' || typeof s.won !== 'boolean') {
       return false;
     }
@@ -368,6 +373,9 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
       if (!item || typeof item !== 'object' || !add(item.card)) return false;
     }
     for (const item of s.waste) {
+      if (!item || typeof item !== 'object' || !add(item.card)) return false;
+    }
+    for (const item of s.discard) {
       if (!item || typeof item !== 'object' || !add(item.card)) return false;
     }
     return total === 52;

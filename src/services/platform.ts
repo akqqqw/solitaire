@@ -32,8 +32,13 @@ interface YandexSDK {
 declare global {
   interface Window {
     YaGames?: { init(): Promise<YandexSDK> };
+    /** Флаги загрузки официального скрипта SDK из index.html. */
+    __yaSdkLoaded?: boolean;
+    __yaSdkFailed?: boolean;
   }
 }
+
+const SDK_WAIT_MS = 1500;
 
 export type PlatformName = 'yandex' | 'offline';
 
@@ -58,9 +63,25 @@ class PlatformService {
   }
 
   private async doInit(): Promise<void> {
-    if (typeof window === 'undefined' || !window.YaGames) return;
+    if (typeof window === 'undefined') return;
+    // Скрипт SDK подключён асинхронно: даём ему короткое время на загрузку,
+    // но не задерживаем игру, если площадка недоступна (офлайн-режим).
+    if (!window.YaGames && !window.__yaSdkFailed) {
+      const deadline = Date.now() + SDK_WAIT_MS;
+      while (!window.YaGames && !window.__yaSdkFailed && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+    }
+    if (!window.YaGames) return;
     try {
-      this.sdk = await window.YaGames.init();
+      // Вне площадки init() может не завершиться — не держим игрока
+      // на экране загрузки и через пару секунд уходим в офлайн-режим.
+      const sdk = await Promise.race([
+        window.YaGames.init(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
+      if (!sdk) return;
+      this.sdk = sdk;
       try {
         this.sdk.features?.LoadingAPI?.ready?.();
       } catch {

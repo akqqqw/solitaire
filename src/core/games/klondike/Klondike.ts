@@ -468,6 +468,7 @@ export const klondikeModule: GameModule<KlondikeState, KlondikeMove> = {
     return allFoundationComplete(state.foundations);
   },
   isStuck(state) {
+    if (state.won) return false;
     if (state.stock.length || state.waste.length) return false;
     const moves = cardMoves(state).filter(
       (m) => m.type === 'move' && m.from.zone !== 'foundation' && m.to.zone !== 'foundation',

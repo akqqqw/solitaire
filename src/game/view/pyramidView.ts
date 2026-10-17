@@ -16,10 +16,14 @@ export function presentPyramid(state: PyramidState, options: PresentOptions): Bo
   const cardH = cardW * 1.42;
   const stepX = cardW * 0.55;
   const stepY = cardH * 0.56;
-  const topY = margin;
   const centerX = W / 2;
   const bottomGap = cardH * 0.25;
-  const stockY = topY + stepY * 6 + cardH + bottomGap;
+  const pyramidHeight = stepY * 6 + cardH;
+  const groupHeight = pyramidHeight + bottomGap + cardH;
+  // Пирамида широкая и на высоких экранах оставляет место снизу:
+  // центрируем всю группу по вертикали вместо жёсткой привязки к верху.
+  const topY = margin + Math.max(0, (H - margin * 2 - groupHeight) / 2);
+  const stockY = topY + pyramidHeight + bottomGap;
   const bottomW = cardW * 2 + cardW * 0.35;
   const stockX = centerX - bottomW / 2;
   const wasteX = stockX + cardW + cardW * 0.35;

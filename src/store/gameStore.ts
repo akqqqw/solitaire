@@ -712,6 +712,7 @@ export const useGameStore = create<AppState>((set, get) => ({
     const profile = buildProfile(get());
     latestProfile = profile;
     await saveProfile(profile);
+    if (platform.available) void platform.pushCloudSave(profile);
   },
 
   showToast(message) {

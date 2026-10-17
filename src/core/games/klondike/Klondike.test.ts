@@ -270,4 +270,14 @@ describe('Косынка: победа и подсказки', () => {
     broken.stock.pop();
     expect(klondikeModule.isValidState(broken)).toBe(false);
   });
+
+  it('не считает завершённую партию зависшей', () => {
+    const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const state = klondikeFixture({
+      foundations: ['s', 'h', 'd', 'c'].map((suit) => ranks.map((rank) => `${rank}${suit}`)),
+    });
+    state.won = true;
+    expect(klondikeModule.isWon(state)).toBe(true);
+    expect(klondikeModule.isStuck(state)).toBe(false);
+  });
 });
