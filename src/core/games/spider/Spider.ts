@@ -240,7 +240,7 @@ export const spiderModule: GameModule<SpiderState, SpiderMove> = {
   applyMove: applySpiderMove,
   legalMoves: legalSpiderMoves,
   hint(state) {
-    if (state.won) return null;
+    if (state.completed.length === COMPLETE_COUNT) return null;
     const moves = legalSpiderMoves(state);
     if (!moves.length) return null;
     const move = [...moves].sort((a, b) => priority(state, b) - priority(state, a))[0];

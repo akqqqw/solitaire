@@ -8,6 +8,7 @@ import { getBoardAdapter } from '../game/adapters/interactions';
 import type { Card } from '../core/cards/Card';
 import type { KlondikeState } from '../core/games/klondike/Klondike';
 import type { SpiderState } from '../core/games/spider/Spider';
+import { createFreeCellGame, type FreeCellState } from '../core/games/freecell/FreeCell';
 
 vi.mock('../ui/components/Board', () => ({
   Board: () => <div data-testid="board-stub">board</div>,
@@ -297,5 +298,54 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     expect(restored.moves).toBe(played.moves);
     expect(restored.stock).toHaveLength(40);
     expect(useGameStore.getState().canUndo).toBe(true);
+  });
+
+  it('Свободная ячейка: номер расклада, ячейки, автосборка и повтор раздачи', async () => {
+    act(() => {
+      useGameStore.getState().openGame('freecell');
+      useGameStore.getState().newGame({ seed: '482913' });
+    });
+    const freecell = () => useGameStore.getState().gameState as FreeCellState;
+    expect(freecell().seed).toBe('482913');
+    expect(freecell().columns.flat()).toHaveLength(52);
+    expect(freecell().freeCells.filter(Boolean)).toHaveLength(0);
+
+    render(<App />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Свободная ячейка' }),
+      ).toBeTruthy();
+    });
+    expect(screen.getByText(/Расклад № 482913/)).toBeTruthy();
+    expect(screen.getByText(/свободных ячеек 4\/4/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Автосборка/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Новая$/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Новая партия' })).toBeTruthy();
+    });
+    const seedField = screen.getByPlaceholderText('Например, 482913') as HTMLInputElement;
+    fireEvent.change(seedField, { target: { value: '77a77777' } });
+    expect(seedField.value).toBe('7777777');
+    fireEvent.change(seedField, { target: { value: '777777' } });
+    fireEvent.click(screen.getByRole('button', { name: /Начать партию/ }));
+
+    await waitFor(() => {
+      expect(freecell().seed).toBe('777777');
+    });
+    const expected = createFreeCellGame({ seed: '777777' });
+    expect(freecell().columns.map((col) => col.map((c) => c.card.id))).toEqual(
+      expected.columns.map((col) => col.map((c) => c.card.id)),
+    );
+    expect(freecell().moves).toBe(0);
+
+    const before = freecell().foundations.reduce((sum, pile) => sum + pile.length, 0);
+    act(() => useGameStore.getState().autoCollect());
+    const after = (useGameStore.getState().gameState as FreeCellState).foundations.reduce(
+      (sum, pile) => sum + pile.length,
+      0,
+    );
+    expect(after).toBeGreaterThanOrEqual(before);
+    expect(useGameStore.getState().isStuck).toBe(false);
   });
 });

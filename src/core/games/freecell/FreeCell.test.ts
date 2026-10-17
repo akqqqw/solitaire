@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { freecellFixture } from '../../../tests/helpers';
+import { freecellAdapter } from '../../../game/adapters/interactions';
 import {
   applyFreeCellMove,
   countEmptyColumns,
@@ -251,5 +252,133 @@ describe('Свободная ячейка: победа, подсказки, в�
     const dup = structuredClone(state) as FreeCellState;
     dup.freeCells[0] = dup.columns[1][0];
     expect(freecellModule.isValidState(dup)).toBe(false);
+  });
+});
+
+describe('Свободная ячейка: номера раскладов, ячейки и адаптер', () => {
+  it('каждый новый расклад получает числовой номер, а номер повторяет расклад', () => {
+    const first = createFreeCellGame();
+    const second = createFreeCellGame();
+    expect(first.seed).toMatch(/^\d+$/);
+    expect(second.seed).toMatch(/^\d+$/);
+    expect(first.seed).not.toBe(second.seed);
+
+    const a = createFreeCellGame({ seed: '482913' });
+    const b = createFreeCellGame({ seed: '482913' });
+    const c = createFreeCellGame({ seed: '482914' });
+    expect(a.seed).toBe('482913');
+    expect(a.columns).toEqual(b.columns);
+    expect(a.columns).not.toEqual(c.columns);
+  });
+
+  it('завершённая партия не считается зависшей', () => {
+    const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const suits = ['s', 'h', 'd', 'c'];
+    const state = freecellFixture({
+      foundations: suits.map((suit) => ranks.map((rank) => `${rank}${suit}`)),
+    });
+    expect(freecellModule.isWon(state)).toBe(true);
+    expect(freecellModule.isStuck(state)).toBe(false);
+    expect(freecellModule.hint(state)).toBeNull();
+  });
+
+  it('адаптер выделяет последовательность и учитывает лимит перекладывания', () => {
+    const state = freecellFixture({
+      columns: [['6h', '5s', '4d'], ['7c'], ['2d'], ['3d'], ['4c'], ['5c'], ['8d'], ['9d']],
+    });
+    const run = freecellAdapter.selectCards(state, 'hearts-6-0');
+    expect(run?.cards).toEqual(['hearts-6-0', 'spades-5-0', 'diamonds-4-0']);
+    expect(freecellAdapter.dropSlots(state, run)).toContain('freecell-column-1');
+
+    const packed = freecellFixture({
+      columns: [['6h', '5s', '4d'], ['7c'], ['2d'], ['3d'], ['4c'], ['5c'], ['8d'], ['9d']],
+      freeCells: ['2h', '3h', '2s', '3s'],
+    });
+    expect(maxMovableCards(packed, false)).toBe(1);
+    expect(freecellAdapter.dropSlots(packed, freecellAdapter.selectCards(packed, 'hearts-6-0'))).not.toContain(
+      'freecell-column-1',
+    );
+  });
+
+  it('адаптер переносит карту в ячейку и возвращает её двойным кликом', () => {
+    const state = freecellFixture({ columns: [['6h'], ['As'], ['2d'], ['3d'], ['4c'], ['5c'], ['8d'], ['9d']] });
+    const selected = freecellAdapter.selectCards(state, 'hearts-6-0');
+    expect(selected?.slot).toBe('freecell-column-0');
+    const toCell = freecellAdapter.clickSlot(state, 'freecell-cell-0', selected);
+    expect(toCell.type).toBe('moves');
+    if (toCell.type !== 'moves') return;
+    const nextState = applyFreeCellMove(state, toCell.moves[0] as never);
+    expect(nextState.freeCells[0]?.card.id).toBe('hearts-6-0');
+    const back = freecellAdapter.doubleClick(nextState, 'hearts-6-0');
+    expect(back.type).toBe('moves');
+    if (back.type === 'moves') {
+      expect(back.moves[0]).toMatchObject({
+        from: { zone: 'freecell', index: 0 },
+        to: { zone: 'tableau' },
+      });
+    }
+  });
+
+  it('из выбранной последовательности в базу уходит только верхняя карта', () => {
+    const state = freecellFixture({
+      columns: [
+        ['4d', '3s', '2h', 'Ac'],
+        ['5c'],
+        ['2d'],
+        ['3d'],
+        ['4c'],
+        ['8d'],
+        ['9d'],
+        ['10d'],
+      ],
+    });
+    const selection = freecellAdapter.selectCards(state, 'diamonds-4-0');
+    expect(selection?.cards).toHaveLength(4);
+    const result = freecellAdapter.clickSlot(state, 'freecell-foundation-0', selection);
+    expect(result.type).toBe('moves');
+    if (result.type === 'moves') {
+      expect(result.moves[0]).toMatchObject({ count: 1, to: { zone: 'foundation', index: 0 } });
+      const next = applyFreeCellMove(state, result.moves[0] as never);
+      expect(next.foundations[0].at(-1)?.card.id).toBe('clubs-1-0');
+      expect(next.columns[0]).toHaveLength(3);
+    }
+  });
+
+  it('двойной клик отправляет туза в базу, а не в ячейку', () => {
+    const state = freecellFixture({ columns: [['As'], ['2d'], ['3d'], ['4c'], ['5c'], ['8d'], ['9d'], ['10d']] });
+    const result = freecellAdapter.doubleClick(state, 'spades-1-0');
+    expect(result.type).toBe('moves');
+    if (result.type === 'moves') {
+      expect(result.moves[0]).toMatchObject({
+        from: { zone: 'tableau', index: 0 },
+        to: { zone: 'foundation' },
+      });
+    }
+  });
+
+  it('автосборка через сессию убирает доступные базовые карты', async () => {
+    const { GameSession } = await import('../../session/GameSession');
+    const state = freecellFixture({
+      columns: [['As'], ['Ah'], ['Ad'], ['Ac'], ['2d'], ['3d'], ['4c'], ['5c']],
+    });
+    const session = GameSession.restore(freecellModule, {
+      gameId: 'freecell',
+      state,
+      undo: [],
+      elapsedMs: 0,
+      resultRecorded: false,
+      hintsUsed: 0,
+      savedAt: 0,
+    });
+    expect(session).not.toBeNull();
+    const moved = session!.autoCollect();
+    const afterAuto = session!.state as FreeCellState;
+    expect(moved).toBe(6);
+    // Четыре туза, затем двойка и тройка бубен поверх туза бубен.
+    expect(afterAuto.foundations.map((pile) => pile.length)).toEqual([1, 1, 3, 1]);
+    expect(session!.canUndo).toBe(true);
+    session!.undo();
+    const afterUndo = session!.state as FreeCellState;
+    expect(afterUndo.foundations.every((pile) => pile.length === 0)).toBe(true);
   });
 });

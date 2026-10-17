@@ -17,7 +17,10 @@ function variantLabel(state: unknown): string {
     if (s.suitCount === 2) return 'Две масти · средний';
     return 'Четыре масти · сложный';
   }
-  if (s.gameId === 'freecell') return 'Классический расклад';
+  if (s.gameId === 'freecell') {
+    const seed = (s as { seed?: string }).seed;
+    return seed ? `Расклад № ${seed}` : 'Классический расклад';
+  }
   return 'Пары на сумму 13';
 }
 
@@ -27,6 +30,8 @@ function progressLabel(state: unknown): string {
     completed?: unknown[];
     removed?: boolean[][];
     foundations?: { length: number }[];
+    freeCells?: (unknown | null)[];
+    columns?: { length: number }[];
   };
   if (s.gameId === 'spider') return `Собрано ${s.completed?.length ?? 0} из 8`;
   if (s.gameId === 'pyramid') {
@@ -35,7 +40,9 @@ function progressLabel(state: unknown): string {
   }
   if (s.gameId === 'freecell') {
     const total = s.foundations?.reduce((sum, pile) => sum + pile.length, 0) ?? 0;
-    return `В базах ${total} из 52`;
+    const free = s.freeCells?.filter((cell) => cell === null).length ?? 4;
+    const empty = s.columns?.filter((col) => col.length === 0).length ?? 0;
+    return `В базах ${total} из 52 · свободных ячеек ${free}/4 · пустых столбцов ${empty}`;
   }
   return 'Классические правила';
 }
@@ -66,6 +73,7 @@ export function GameScreen() {
   const [winDismissed, setWinDismissed] = useState(false);
   const [drawCount, setDrawCount] = useState<1 | 3>(1);
   const [suitCount, setSuitCount] = useState<1 | 2 | 4>(1);
+  const [seedInput, setSeedInput] = useState('');
 
   const gameId = session?.gameId ?? null;
   const gameKey = session ? `${session.gameId}:${(session.state as { seed: string }).seed}:${(session.state as { createdAt: number }).createdAt}` : '';
@@ -78,6 +86,7 @@ export function GameScreen() {
 
   useEffect(() => {
     setWinDismissed(false);
+    setSeedInput('');
   }, [gameKey]);
 
   useEffect(() => {
@@ -339,6 +348,7 @@ export function GameScreen() {
               onClick={() => {
                 if (gameId === 'klondike') startNew({ drawCount });
                 else if (gameId === 'spider') startNew({ suitCount });
+                else if (gameId === 'freecell') startNew({ seed: seedInput || undefined });
                 else startNew({});
               }}
             >
@@ -383,15 +393,33 @@ export function GameScreen() {
               </div>
             </div>
           ) : null}
-          {gameId === 'freecell' || gameId === 'pyramid' ? (
+          {gameId === 'freecell' ? (
+            <label className="seed-field">
+              <span className="choice-label">Номер расклада</span>
+              <input
+                className="text-input"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={9}
+                placeholder="Например, 482913"
+                value={seedInput}
+                onChange={(event) =>
+                  setSeedInput(event.target.value.replace(/\D/g, '').slice(0, 9))
+                }
+              />
+              <small className="muted">
+                Введите номер, чтобы повторить знакомый расклад, или оставьте поле пустым —
+                клуб выдаст новый.
+              </small>
+            </label>
+          ) : null}
+          {gameId === 'pyramid' ? (
             <div className="newgame-note">
               <span className="mode-glyph"><GameGlyph game={gameId} /></span>
               <div>
                 <strong>{variantLabel(state)}</strong>
                 <p className="muted">
-                  {gameId === 'freecell'
-                    ? 'Все 52 карты открыты с первой секунды. Расклад воспроизводим по seed.'
-                    : 'Колода открывается по одной карте. Сброс можно переворачивать без ограничений.'}
+                  Колода открывается по одной карте. Сброс можно переворачивать без ограничений.
                 </p>
               </div>
             </div>

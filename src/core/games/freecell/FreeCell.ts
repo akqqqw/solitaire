@@ -2,7 +2,7 @@ import { cardLabel, isOppositeColor, SUITS, type Card } from '../../cards/Card';
 import { buildDeck } from '../../cards/Deck';
 import { canPlaceOnFoundation } from '../../cards/CardRules';
 import { cloneState, isCardLike, type PlacedCard } from '../../cards/Pile';
-import { createRng, randomSeed, shuffleInPlace } from '../../cards/Shuffle';
+import { createRng, shuffleInPlace } from '../../cards/Shuffle';
 import type { GameModule, GameStateBase, Hint, NewGameOptions } from '../types';
 
 export type FreeCellZone = 'tableau' | 'freecell' | 'foundation';
@@ -45,7 +45,9 @@ function createEmpty(seed: string): FreeCellState {
 }
 
 export function createFreeCellGame(options: NewGameOptions = {}): FreeCellState {
-  const seed = options.seed ?? randomSeed();
+  // По умолчанию каждый расклад получает числовой номер: его можно
+  // назвать, повторить и проверить независимо от устройства.
+  const seed = options.seed?.trim() || String(Math.floor(Math.random() * 1_000_000));
   const state = createEmpty(seed);
   const deck = shuffleInPlace(buildDeck(), createRng(seed));
   let cursor = 0;
@@ -363,11 +365,13 @@ export const freecellModule: GameModule<FreeCellState, FreeCellMove> = {
     'В свободную ячейку помещается только одна карта.',
     'Число карт, переносимых за один раз, ограничено свободными ячейками и пустыми столбцами.',
     'Соберите четыре базовые стопки от туза до короля.',
+    'Каждый расклад имеет номер: одинаковый номер всегда даёт те же карты в тех же столбцах.',
   ],
   createGame: createFreeCellGame,
   applyMove: applyFreeCellMove,
   legalMoves: legalFreeCellMoves,
   hint(state) {
+    if (allComplete(state)) return null;
     const moves = legalFreeCellMoves(state);
     if (!moves.length) return null;
     const move = [...moves].sort((a, b) => priority(state, b) - priority(state, a))[0];
@@ -386,6 +390,7 @@ export const freecellModule: GameModule<FreeCellState, FreeCellMove> = {
     return state.foundations.every((pile) => pile.length === 13);
   },
   isStuck(state) {
+    if (allComplete(state)) return false;
     return legalFreeCellMoves(state).length === 0;
   },
   isValidState(raw): raw is FreeCellState {

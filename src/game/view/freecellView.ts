@@ -38,7 +38,6 @@ export function presentFreeCell(state: FreeCellState, options: PresentOptions): 
       height: cardH,
       label: '＋',
       interactive: true,
-      badge: item ? '' : '',
     });
     if (item) {
       cards.push({

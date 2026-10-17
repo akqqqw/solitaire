@@ -570,7 +570,10 @@ function freecellBuildMove(
   const from = freecellSource(sourceSlot, cards.length);
   const to = freecellTarget(targetSlot);
   if (!from || !to) return null;
-  const move: FreeCellMove = { type: 'move', from, to, count: cards.length };
+  // В базовую стопку всегда уходит только верхняя карта, даже если
+  // игрок выбрал целую последовательность.
+  const count = to.zone === 'foundation' ? 1 : cards.length;
+  const move: FreeCellMove = { type: 'move', from, to, count };
   return tryApply({ applyMove: applyFreeCellMove }, state, move) ? move : null;
 }
 
@@ -621,14 +624,18 @@ export const freecellAdapter: BoardAdapter = {
       const move = freecellBuildMove(s, sourceSlot, [card.id], `freecell-foundation-${f}`);
       if (move) return movesResult([move]);
     }
-    const freeCell = s.freeCells.findIndex((c) => c === null);
-    if (freeCell >= 0) {
-      const move = freecellBuildMove(s, sourceSlot, [card.id], `freecell-cell-${freeCell}`);
-      if (move) return movesResult([move]);
+    // Из базовой стопки карту автоматически не убираем: это почти всегда
+    // ухудшает позицию. Из столбца — можно, в свободную ячейку.
+    if (hit.zone === 'tableau') {
+      const freeCell = s.freeCells.findIndex((c) => c === null);
+      if (freeCell >= 0) {
+        const move = freecellBuildMove(s, sourceSlot, [card.id], `freecell-cell-${freeCell}`);
+        if (move) return movesResult([move]);
+      }
     }
     const options = legalFreeCellMoves(s).filter(
       (m) =>
-        m.from.zone === (hit.zone === 'tableau' ? 'tableau' : hit.zone) &&
+        m.from.zone === hit.zone &&
         m.from.index === hit.index &&
         m.count === 1 &&
         m.to.zone === 'tableau',

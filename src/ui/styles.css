@@ -2979,6 +2979,42 @@ svg {
   font-size: 0.76rem;
 }
 
+.seed-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.seed-field small {
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.text-input {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: 11px;
+  border: 1px solid rgba(244, 236, 220, 0.16);
+  background: rgba(5, 18, 12, 0.55);
+  color: var(--cream);
+  font: inherit;
+  font-size: 1rem;
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.text-input::placeholder {
+  color: rgba(162, 176, 164, 0.55);
+  letter-spacing: 0.08em;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(214, 184, 109, 0.08);
+}
+
 /* ---------- notifications ---------- */
 
 .notifications {
