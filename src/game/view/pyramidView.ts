@@ -1,4 +1,4 @@
-import type { PyramidState } from '../../core/games/pyramid/Pyramid';
+import { isPyramidCardAvailable, type PyramidState } from '../../core/games/pyramid/Pyramid';
 import {
   selectedIdSet,
   type BoardView,
@@ -80,26 +80,42 @@ export function presentPyramid(state: PyramidState, options: PresentOptions): Bo
       height: cardH,
       depth: 300 + index,
       interactive: index === wasteTop,
-      draggable: false,
+      draggable: index === wasteTop && item.card.rank !== 13,
     });
   });
 
   state.pyramid.forEach((row, rowIndex) => {
     row.forEach((item, colIndex) => {
       if (state.removed[rowIndex][colIndex]) return;
+      const available = isPyramidCardAvailable(state, rowIndex, colIndex);
+      const x = centerX - cardW / 2 + (colIndex - rowIndex / 2) * stepX;
+      const y = topY + rowIndex * stepY;
       cards.push({
         id: item.card.id,
         suit: item.card.suit,
         rank: item.card.rank,
         faceUp: true,
-        x: centerX - cardW / 2 + (colIndex - rowIndex / 2) * stepX,
-        y: topY + rowIndex * stepY,
+        x,
+        y,
         width: cardW,
         height: cardH,
         depth: 100 + rowIndex * 30 + colIndex,
-        interactive: true,
-        draggable: false,
+        interactive: available,
+        draggable: available && item.card.rank !== 13,
       });
+      if (available) {
+        // Невидимая цель для перетаскивания и подсветки: сама карта
+        // рисуется отдельно, а зона нужна только для поиска пары.
+        slots.push({
+          id: `pyramid-${rowIndex}-${colIndex}`,
+          kind: 'pyramid' as const,
+          x,
+          y,
+          width: cardW,
+          height: cardH,
+          interactive: false,
+        });
+      }
     });
   });
 

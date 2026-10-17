@@ -203,6 +203,7 @@ export function hasAnyPyramidPair(cards: readonly Card[], target = 13): boolean 
 
 export function legalPyramidMoves(state: PyramidState): PyramidMove[] {
   const moves: PyramidMove[] = [];
+  if (allPyramidRemoved(state)) return moves;
   const refs = availablePyramidRefs(state);
   for (const ref of refs) {
     const card = cardAtRef(state, ref);
@@ -243,11 +244,12 @@ function refCards(state: PyramidState, ref: PyramidRef): CardId[] {
 function priority(state: PyramidState, move: PyramidMove): number {
   if (move.type === 'remove') {
     if (!move.b) return 100;
-    // Пары, освобождающие карты в верхних рядах, полезнее.
+    // Карты из нижних рядов держат верхние: убирая их, мы открываем больше карт.
     const rows = [move.a, move.b]
       .filter((r): r is Extract<PyramidRef, { zone: 'pyramid' }> => r.zone === 'pyramid')
       .map((r) => r.row);
-    return 40 - (rows.length === 2 ? Math.min(...rows) : 6);
+    const depth = rows.length ? Math.max(...rows) : 0;
+    return 50 + depth * 5 + (rows.length === 2 ? 5 : 0);
   }
   if (move.type === 'draw') return 10;
   return 5;
@@ -275,17 +277,26 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
     'Пара карт должна давать в сумме 13. Король (13) убирается один.',
     'Номиналы: туз — 1, валет — 11, дама — 12, король — 13.',
     'С верхней картой сброса можно составить пару с доступной картой пирамиды.',
-    'Колода открывается по одной карте. Сброс можно переворачивать без ограничений.',
+    'Колода открывается по одной карте в сброс. С верхней картой сброса можно составить пару.',
+    'Когда колода пуста, сброс переворачивается и снова становится колодой — число кругов не ограничено.',
+    'Победа — когда убраны все 28 карт пирамиды. Оставшиеся карты колоды не мешают победе.',
   ],
   createGame: createPyramidGame,
   applyMove: applyPyramidMove,
   legalMoves: legalPyramidMoves,
   hint(state) {
+    if (allPyramidRemoved(state)) return null;
     const moves = legalPyramidMoves(state);
     if (!moves.length) return null;
     const move = [...moves].sort((a, b) => priority(state, b) - priority(state, a))[0];
-    const cards = refCards(state, move.type === 'remove' ? move.a : { zone: 'waste' });
-    if (move.type === 'remove' && move.b) cards.push(...refCards(state, move.b));
+    const cards: CardId[] = [];
+    if (move.type === 'remove') {
+      cards.push(...refCards(state, move.a));
+      if (move.b) cards.push(...refCards(state, move.b));
+    } else if (move.type === 'draw') {
+      const top = state.stock[state.stock.length - 1];
+      if (top) cards.push(top.card.id);
+    }
     return {
       move,
       cards,
@@ -300,6 +311,7 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
     return state.removed.every((row) => row.every(Boolean));
   },
   isStuck(state) {
+    if (allPyramidRemoved(state)) return false;
     if (state.stock.length > 0) return false;
     if (legalPyramidMoves(state).some((m) => m.type === 'remove')) return false;
     if (state.waste.length === 0) return true;
@@ -321,6 +333,7 @@ export const pyramidModule: GameModule<PyramidState, PyramidMove> = {
     if (typeof s.moves !== 'number' || typeof s.score !== 'number' || typeof s.won !== 'boolean') {
       return false;
     }
+    if (typeof s.cycles !== 'number' || s.cycles < 0) return false;
     const ids = new Set<string>();
     let total = 0;
     const add = (card: unknown): boolean => {

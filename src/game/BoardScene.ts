@@ -497,6 +497,8 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private drawSlotBase(slot: ViewSlot): void {
+    // Зоны-карты Пирамиды не рисуют подложку: карта уже занимает это место.
+    if (slot.kind === 'pyramid') return;
     const radius = this.slotRadius(slot);
     this.slotLayer.fillStyle(0x000000, slot.kind === 'tableau' || slot.kind === 'freecell' ? 0.12 : 0.18);
     this.slotLayer.fillRoundedRect(slot.x, slot.y, slot.width, slot.height, radius);

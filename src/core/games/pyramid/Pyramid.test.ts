@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pyramidFixture } from '../../../tests/helpers';
+import { pyramidAdapter } from '../../../game/adapters/interactions';
 import {
   applyPyramidMove,
   createPyramidGame,
@@ -198,5 +199,108 @@ describe('Пирамида: победа, подсказки, валидация
     const dup = structuredClone(state) as PyramidState;
     dup.stock[0] = dup.pyramid[0][0];
     expect(pyramidModule.isValidState(dup)).toBe(false);
+  });
+});
+
+describe('Пирамида: круги сброса, подсказки и адаптер', () => {
+  const safeRow = ['6h', '7s', '2c', '3c', '4c', '5c', '2h'];
+  const drawRow = ['2c', '3c', '4c', '5c', '6c', '2h', '3h'];
+
+  it('позволяет переворачивать сброс несколько раз', () => {
+    let state = pyramidFixture({ pyramid: [null, null, null, null, null, null, safeRow] });
+    const total = state.stock.length;
+    for (let round = 0; round < 2; round += 1) {
+      for (let i = 0; i < total; i += 1) state = applyPyramidMove(state, { type: 'draw' });
+      expect(state.stock).toHaveLength(0);
+      state = applyPyramidMove(state, { type: 'recycle' });
+      expect(state.waste).toHaveLength(0);
+      expect(state.stock).toHaveLength(total);
+    }
+    expect(state.cycles).toBe(2);
+  });
+
+  it('после победы не предлагает ходов и не считает партию зависшей', () => {
+    const state = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, [null, null, null, null, null, null, 'Ks']],
+      removed: emptyRemoved({ row: 6, col: 6 }),
+    });
+    const next = applyPyramidMove(state, {
+      type: 'remove',
+      a: { zone: 'pyramid', row: 6, col: 6 },
+    });
+    expect(next.won).toBe(true);
+    expect(next.stock.length).toBeGreaterThan(0);
+    expect(legalPyramidMoves(next)).toEqual([]);
+    expect(pyramidModule.hint(next)).toBeNull();
+    expect(pyramidModule.isStuck(next)).toBe(false);
+  });
+
+  it('подсказка предпочитает снятие пары, а не новую карту из колоды', () => {
+    const state = pyramidFixture({ pyramid: [null, null, null, null, null, null, safeRow] });
+    const hint = pyramidModule.hint(state);
+    expect(hint?.move.type).toBe('remove');
+    expect(hint?.cards).toEqual(['hearts-6-0', 'spades-7-0']);
+  });
+
+  it('подсказка «открыть карту» подсвечивает верх колоды, а «перевернуть» — сброс', () => {
+    const drawState = pyramidFixture({ pyramid: [null, null, null, null, null, null, drawRow] });
+    const drawHint = pyramidModule.hint(drawState);
+    expect(drawHint?.move.type).toBe('draw');
+    expect(drawHint?.cards).toEqual([drawState.stock[drawState.stock.length - 1].card.id]);
+    expect(pyramidAdapter.hintSlotIds(drawState, drawHint)).toEqual(['pyramid-stock']);
+
+    const recycleState = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, drawRow],
+      waste: ['Qs'],
+    });
+    recycleState.stock = [];
+    const recycleHint = pyramidModule.hint(recycleState);
+    expect(recycleHint?.move.type).toBe('recycle');
+    expect(recycleHint?.cards).toEqual([]);
+    expect(pyramidAdapter.hintSlotIds(recycleState, recycleHint)).toEqual(['pyramid-waste']);
+  });
+
+  it('адаптер не даёт выбрать закрытую карту и убирает короля из сброса', () => {
+    const state = pyramidFixture({ pyramid: [['6s'], null, null] });
+    expect(pyramidAdapter.selectCards(state, 'spades-6-0')).toBeNull();
+    const wasteKing = pyramidFixture({ waste: ['Kh'] });
+    const result = pyramidAdapter.clickSlot(wasteKing, 'pyramid-waste', null);
+    expect(result.type).toBe('moves');
+    if (result.type === 'moves') {
+      expect(result.moves[0]).toEqual({ type: 'remove', a: { zone: 'waste' } });
+    }
+  });
+
+  it('адаптер поддерживает перетаскивание и двойной клик по паре', () => {
+    const state = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, ['6h', '7s', 'Kd', '2c', '3c', '4c', '5c']],
+      waste: ['7h'],
+    });
+    const selection = pyramidAdapter.selectCards(state, 'hearts-6-0');
+    expect(selection?.slot).toBe('pyramid-6-0');
+    const slots = pyramidAdapter.dropSlots(state, selection);
+    expect(slots).toContain('pyramid-6-1');
+    expect(slots).toContain('pyramid-waste');
+
+    const dropped = pyramidAdapter.drop(state, ['hearts-6-0'], 'pyramid-6-1');
+    expect(dropped.type).toBe('moves');
+
+    const wastePair = pyramidAdapter.drop(state, ['hearts-6-0'], 'pyramid-waste');
+    expect(wastePair.type).toBe('moves');
+
+    const double = pyramidAdapter.doubleClick(state, 'hearts-6-0');
+    expect(double.type).toBe('moves');
+
+    const king = pyramidAdapter.doubleClick(state, 'diamonds-13-0');
+    expect(king.type).toBe('moves');
+    if (king.type === 'moves') {
+      expect(king.moves[0]).toEqual({ type: 'remove', a: { zone: 'pyramid', row: 6, col: 2 } });
+    }
+  });
+
+  it('подсветка подсказки возвращает слоты обеих карт пары', () => {
+    const state = pyramidFixture({ pyramid: [null, null, null, null, null, null, safeRow] });
+    const hint = pyramidModule.hint(state);
+    expect(pyramidAdapter.hintSlotIds(state, hint)).toEqual(['pyramid-6-0', 'pyramid-6-1']);
   });
 });

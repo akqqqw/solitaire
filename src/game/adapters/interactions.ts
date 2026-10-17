@@ -771,8 +771,15 @@ export const pyramidAdapter: BoardAdapter = {
       const move = pyramidRemove(hit.ref);
       return movesResult([move]);
     }
+    // Сначала пробуем верх сброса, затем открытые карты пирамиды.
+    const waste = s.waste.at(-1);
+    if (waste && hit.ref.zone === 'pyramid' && hit.card.rank + waste.card.rank === 13) {
+      const move = pyramidRemove(hit.ref, { zone: 'waste' });
+      if (tryApply({ applyMove: applyPyramidMove }, s, move)) return movesResult([move]);
+    }
     for (const ref of availablePyramidRefs(s)) {
       if (ref.zone !== 'pyramid') continue;
+      if (hit.ref.zone === 'pyramid' && ref.row === hit.ref.row && ref.col === hit.ref.col) continue;
       const card = pyramidCardAt(s, ref.row, ref.col);
       if (card && card.rank + hit.card.rank === 13) {
         const move = pyramidRemove(hit.ref, ref);
@@ -813,14 +820,65 @@ export const pyramidAdapter: BoardAdapter = {
     }
     return none();
   },
-  drop() {
-    return none();
+  drop(state, cards, slotId) {
+    const s = state as PyramidState;
+    if (!cards.length) return none();
+    const hit = hitPyramid(s, cards[0]);
+    if (!hit) return none();
+    let move: PyramidMove | null = null;
+    if (slotId === 'pyramid-waste') {
+      if (hit.ref.zone !== 'pyramid') return none();
+      const waste = s.waste.at(-1);
+      if (!waste || hit.card.rank + waste.card.rank !== 13) return none();
+      move = pyramidRemove(hit.ref, { zone: 'waste' });
+    } else {
+      const m = /^pyramid-(\d+)-(\d+)$/.exec(slotId);
+      if (!m) return none();
+      const ref: PyramidRef = { zone: 'pyramid', row: Number(m[1]), col: Number(m[2]) };
+      if (hit.ref.zone === 'pyramid' && hit.ref.row === ref.row && hit.ref.col === ref.col) {
+        return none();
+      }
+      const target = pyramidCardAt(s, ref.row, ref.col);
+      if (!target || target.rank + hit.card.rank !== 13) return none();
+      move = pyramidRemove(hit.ref, ref);
+    }
+    return tryApply({ applyMove: applyPyramidMove }, s, move)
+      ? movesResult([move])
+      : none();
   },
-  dropSlots() {
-    return [];
+  dropSlots(state, selection) {
+    const s = state as PyramidState;
+    if (!selection) return [];
+    const hit = hitPyramid(s, selection.cards[0]);
+    if (!hit) return [];
+    const slots: string[] = [];
+    const waste = s.waste.at(-1);
+    if (hit.ref.zone === 'pyramid' && waste && hit.card.rank + waste.card.rank === 13) {
+      slots.push('pyramid-waste');
+    }
+    for (const ref of availablePyramidRefs(s)) {
+      if (ref.zone !== 'pyramid') continue;
+      if (hit.ref.zone === 'pyramid' && ref.row === hit.ref.row && ref.col === hit.ref.col) continue;
+      const card = pyramidCardAt(s, ref.row, ref.col);
+      if (card && card.rank + hit.card.rank === 13) {
+        slots.push(`pyramid-${ref.row}-${ref.col}`);
+      }
+    }
+    return slots;
   },
-  hintSlotIds() {
-    return [];
+  hintSlotIds(state, hint) {
+    if (!hint) return [];
+    const move = hint.move as PyramidMove;
+    if (move.type === 'draw') return ['pyramid-stock'];
+    if (move.type === 'recycle') return ['pyramid-waste'];
+    if (move.type !== 'remove') return [];
+    const ids: string[] = [];
+    const push = (ref: PyramidRef) => {
+      ids.push(ref.zone === 'waste' ? 'pyramid-waste' : `pyramid-${ref.row}-${ref.col}`);
+    };
+    push(move.a);
+    if (move.b) push(move.b);
+    return ids;
   },
 };
 

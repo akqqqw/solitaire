@@ -9,6 +9,7 @@ import type { Card } from '../core/cards/Card';
 import type { KlondikeState } from '../core/games/klondike/Klondike';
 import type { SpiderState } from '../core/games/spider/Spider';
 import { createFreeCellGame, type FreeCellState } from '../core/games/freecell/FreeCell';
+import type { PyramidState } from '../core/games/pyramid/Pyramid';
 
 vi.mock('../ui/components/Board', () => ({
   Board: () => <div data-testid="board-stub">board</div>,
@@ -347,5 +348,65 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     );
     expect(after).toBeGreaterThanOrEqual(before);
     expect(useGameStore.getState().isStuck).toBe(false);
+  });
+
+  it('Пирамида: колода, сброс, подсказка, отмена и новая партия', async () => {
+    act(() => {
+      useGameStore.getState().openGame('pyramid');
+      useGameStore.getState().newGame({});
+    });
+    const pyramid = () => useGameStore.getState().gameState as PyramidState;
+    expect(pyramid().pyramid.map((row) => row.length)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(pyramid().stock).toHaveLength(24);
+    expect(pyramid().waste).toHaveLength(0);
+    expect(pyramid().moves).toBe(0);
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Пирамида' })).toBeTruthy();
+    });
+    expect(screen.getByText(/Убрано 0 из 28/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Автосборка/ })).toBeNull();
+
+    act(() => useGameStore.getState().handleSlotClick('pyramid-stock'));
+    expect(pyramid().stock).toHaveLength(23);
+    expect(pyramid().waste).toHaveLength(1);
+    expect(pyramid().moves).toBe(1);
+    expect(useGameStore.getState().canUndo).toBe(true);
+
+    await act(async () => {
+      await useGameStore.getState().requestHint();
+    });
+    expect(useGameStore.getState().hint?.text.length).toBeGreaterThan(3);
+
+    await act(async () => {
+      await useGameStore.getState().undo();
+    });
+    expect(pyramid().stock).toHaveLength(24);
+    expect(pyramid().waste).toHaveLength(0);
+    expect(pyramid().moves).toBe(0);
+
+    // После пустой колоды сброс можно перевернуть.
+    act(() => {
+      for (let i = 0; i < 24; i += 1) useGameStore.getState().handleSlotClick('pyramid-stock');
+    });
+    expect(pyramid().stock).toHaveLength(0);
+    expect(pyramid().waste).toHaveLength(24);
+    act(() => useGameStore.getState().handleSlotClick('pyramid-stock'));
+    expect(pyramid().cycles).toBe(1);
+    expect(pyramid().stock).toHaveLength(24);
+    expect(pyramid().waste).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Новая$/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Новая партия' })).toBeTruthy();
+    });
+    expect(screen.getByText(/Сброс можно переворачивать без ограничений/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Начать партию/ }));
+    await waitFor(() => {
+      expect(pyramid().moves).toBe(0);
+    });
+    expect(pyramid().stock).toHaveLength(24);
+    expect(pyramid().cycles).toBe(0);
   });
 });
