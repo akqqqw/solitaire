@@ -1,0 +1,28 @@
+{
+  "name": "Пасьянс Клуб — Косынка, Паук, Свободная ячейка, Пирамида",
+  "short_name": "Пасьянс Клуб",
+  "description": "Четыре классических пасьянса в одном клубе: статистика, достижения, ежедневные испытания и сохранение партий.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#06150f",
+  "theme_color": "#0b241b",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
