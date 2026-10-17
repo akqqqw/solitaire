@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { spiderAdapter } from '../../../game/adapters/interactions';
 import { spiderFixture } from '../../../tests/helpers';
 import {
   applySpiderMove,
@@ -140,5 +141,129 @@ describe('Паук: победа, подсказки и валидация', () 
     const duplicate = structuredClone(state) as SpiderState;
     duplicate.columns[1].push(duplicate.columns[0][0]);
     expect(spiderModule.isValidState(duplicate)).toBe(false);
+  });
+});
+
+describe('Паук: раздачи, удаление и подсчёт', () => {
+  it('разрешает ровно пять раздач, затем колода пуста', () => {
+    let state = createSpiderGame({ seed: 'five-deals', suitCount: 4 });
+    for (let deal = 0; deal < 5; deal += 1) {
+      expect(legalSpiderMoves(state).some((m) => m.type === 'deal')).toBe(true);
+      state = applySpiderMove(state, { type: 'deal' });
+    }
+    expect(state.stock).toHaveLength(0);
+    expect(state.columns.every((col) => col.length >= 10)).toBe(true);
+    expect(legalSpiderMoves(state).some((m) => m.type === 'deal')).toBe(false);
+    expect(() => applySpiderMove(state, { type: 'deal' })).toThrow(/недостаточно/);
+    expect(spiderModule.isValidState(state)).toBe(true);
+  });
+
+  it('не убирает 13 карт, если последовательность смешана по мастям', () => {
+    const mixed = ['Ks#3', 'Qh#2', 'Js#3', '10h#2', '9s#3', '8h#2', '7s#3', '6h#2', '5s#3', '4h#2', '3s#3', '2h#2'];
+    const state = spiderFixture({ suitCount: 4, columns: [mixed, ['As#7']] });
+    const next = applySpiderMove(state, { type: 'move', from: 1, to: 0, count: 1 });
+    expect(next.completed).toHaveLength(0);
+    expect(next.won).toBe(false);
+    expect(next.score).toBe(499);
+  });
+
+  it('убирает короля—туза одной масти и начисляет 100 очков', () => {
+    const run = ['Ks#2', 'Qs#2', 'Js#2', '10s#2', '9s#2', '8s#2', '7s#2', '6s#2', '5s#2', '4s#2', '3s#2', '2s#2'];
+    const state = spiderFixture({ suitCount: 1, columns: [run, ['As#3']] });
+    const next = applySpiderMove(state, { type: 'move', from: 1, to: 0, count: 1 });
+    expect(next.completed).toHaveLength(1);
+    expect(next.score).toBe(599);
+  });
+
+  it('последняя восьмая последовательность завершает партию победой', () => {
+    const runTokens = (copy: number) =>
+      ['K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2', 'A'].map(
+        (rank) => `${rank}s#${copy}`,
+      );
+    const completed = Array.from({ length: 7 }, (_, copy) => runTokens(copy));
+    const state = spiderFixture({
+      suitCount: 1,
+      completed,
+      columns: [runTokens(7).slice(0, 12), ['As#7']],
+    });
+    const next = applySpiderMove(state, { type: 'move', from: 1, to: 0, count: 1 });
+    expect(next.completed).toHaveLength(8);
+    expect(next.won).toBe(true);
+    expect(spiderModule.isWon(next)).toBe(true);
+    // 500 стартовых − 1 ход + 100 за убранную последнюю последовательность.
+    expect(next.score).toBe(599);
+    expect(spiderModule.hint(next)).toBeNull();
+  });
+
+  it('каждая подсказка применима, а состояние остаётся валидным', () => {
+    for (const suitCount of [1, 2, 4] as const) {
+      for (const seed of ['hint-a', 'hint-b', 'hint-c', 'hint-d']) {
+        let state = createSpiderGame({ seed, suitCount });
+        for (let step = 0; step < 30; step += 1) {
+          const hint = spiderModule.hint(state);
+          if (!hint) break;
+          const next = applySpiderMove(state, hint.move);
+          expect(next.moves).toBe(state.moves + 1);
+          expect(spiderModule.isValidState(next)).toBe(true);
+          state = next;
+          if (state.won) break;
+        }
+        expect(spiderModule.isValidState(state)).toBe(true);
+      }
+    }
+  });
+
+  it('после победы не предлагает ходы и не считает партию зависшей', () => {
+    const completed = Array.from({ length: 8 }, (_, copy) =>
+      ['K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2', 'A'].map(
+        (rank) => `${rank}s#${copy}`,
+      ),
+    );
+    const state = spiderFixture({ suitCount: 1, completed });
+    expect(spiderModule.isWon(state)).toBe(true);
+    expect(spiderModule.isStuck(state)).toBe(false);
+    expect(spiderModule.hint(state)).toBeNull();
+  });
+});
+
+describe('Паук: адаптер доски', () => {
+  it('выделяет только последовательность одной масти и предлагает верную цель', () => {
+    const state = spiderFixture({
+      suitCount: 4,
+      columns: [
+        ['7s#3', '6s#3'],
+        ['8s#7'],
+        ['5h#2'],
+      ],
+    });
+    const selection = spiderAdapter.selectCards(state, 'spades-7-3');
+    expect(selection?.cards).toEqual(['spades-7-3', 'spades-6-3']);
+    expect(selection?.slot).toBe('spider-column-0');
+    const slots = spiderAdapter.dropSlots(state, selection);
+    expect(slots).toContain('spider-column-1');
+    const result = spiderAdapter.drop(state, selection!.cards, 'spider-column-1');
+    expect(result.type).toBe('moves');
+    expect(spiderAdapter.hintSlotIds(state, spiderModule.hint(state))).toHaveLength(1);
+  });
+
+  it('объясняет запрет раздачи при пустом столбце', () => {
+    const state = spiderFixture({ columns: [['7s#0']] });
+    const result = spiderAdapter.clickSlot(state, 'spider-stock', null);
+    expect(result.type).toBe('error');
+    if (result.type === 'error') {
+      expect(result.message).toMatch(/пустые столбцы/);
+    }
+  });
+
+  it('двойной клик отправляет допустимую карту в подходящий столбец', () => {
+    const state = spiderFixture({
+      suitCount: 1,
+      columns: [['9s#0', '2s#1'], ['3s#2']],
+    });
+    const result = spiderAdapter.doubleClick(state, 'spades-2-1');
+    expect(result.type).toBe('moves');
+    if (result.type === 'moves') {
+      expect(result.moves[0]).toMatchObject({ from: 0, to: 1, count: 1 });
+    }
   });
 });

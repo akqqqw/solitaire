@@ -98,7 +98,7 @@ export function presentSpider(state: SpiderState, options: PresentOptions): Boar
         width: cardW,
         height: cardH,
         depth: 500 + col * 80 + index,
-        interactive: true,
+        interactive: item.faceUp,
         draggable: item.faceUp,
       });
     });

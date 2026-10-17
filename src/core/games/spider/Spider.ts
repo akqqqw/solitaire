@@ -141,10 +141,7 @@ export function applySpiderMove(state: SpiderState, move: SpiderMove): SpiderSta
       next.columns[col].push(card);
     }
     removeCompletedSequences(next);
-    if (next.completed.length === COMPLETE_COUNT) {
-      next.won = true;
-      next.score += 100;
-    }
+    next.won = next.completed.length === COMPLETE_COUNT;
     return next;
   }
 
@@ -155,10 +152,7 @@ export function applySpiderMove(state: SpiderState, move: SpiderMove): SpiderSta
   if (exposed && !exposed.faceUp) exposed.faceUp = true;
   removeCompletedSequences(next);
   next.score = Math.max(0, next.score);
-  if (next.completed.length === COMPLETE_COUNT) {
-    next.won = true;
-    next.score += 100;
-  }
+  next.won = next.completed.length === COMPLETE_COUNT;
   return next;
 }
 
@@ -235,16 +229,18 @@ export const spiderModule: GameModule<SpiderState, SpiderMove> = {
   title: 'Паук',
   description: 'Соберите восемь полных последовательностей от короля до туза.',
   rules: [
-    'На поле 10 столбцов и 104 карты. В колоде 5 дополнительных раздач по 10 карт.',
-    'Класть карту можно на карту на единицу старше, масть при этом не важна.',
+    'На поле 10 столбцов и 104 карты. В расклад идут 54 карты, в колоде остаются 50 — это пять раздач по 10.',
+    'Класть карту можно на карту на единицу старше; для одиночной карты масть не важна.',
     'Переносить вместе можно только последовательность одной масти по убыванию.',
-    'Полная последовательность от короля до туза автоматически убирается.',
-    'Раздача запрещена, если хотя бы один столбец пуст.',
+    'Полная последовательность от короля до туза одной масти автоматически убирается в базу.',
+    'Раздача из колоды запрещена, если хотя бы один столбец пуст: сначала заполните его.',
+    'Счёт: 500 в начале, −1 за каждый ход и раздачу, +100 за каждую убранную последовательность.',
   ],
   createGame: createSpiderGame,
   applyMove: applySpiderMove,
   legalMoves: legalSpiderMoves,
   hint(state) {
+    if (state.won) return null;
     const moves = legalSpiderMoves(state);
     if (!moves.length) return null;
     const move = [...moves].sort((a, b) => priority(state, b) - priority(state, a))[0];

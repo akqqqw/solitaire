@@ -146,7 +146,7 @@ export function presentKlondike(
         width: cardW,
         height: cardH,
         depth: 900 + col * 60 + index,
-        interactive: true,
+        interactive: item.faceUp,
         draggable: item.faceUp,
       });
     });

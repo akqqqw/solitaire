@@ -431,9 +431,15 @@ export const spiderAdapter: BoardAdapter = {
   clickSlot(state, slotId, selection) {
     const s = state as SpiderState;
     if (slotId === 'spider-stock') {
+      if (s.stock.length < 10) {
+        return { type: 'error', message: 'В колоде не осталось карт для раздачи' };
+      }
+      if (s.columns.some((col) => col.length === 0)) {
+        return { type: 'error', message: 'Сначала заполните пустые столбцы — раздача запрещена' };
+      }
       const move: SpiderMove = { type: 'deal' };
       if (tryApply({ applyMove: applySpiderMove }, s, move)) return movesResult([move]);
-      return { type: 'error', message: 'Раздача недоступна: нужен хотя бы один свободный столбец или мало карт' };
+      return { type: 'error', message: 'Раздача сейчас недоступна' };
     }
     const column = /^spider-column-(\d+)$/.exec(slotId);
     if (column && selection) {

@@ -7,6 +7,7 @@ import { ACHIEVEMENTS } from '../core/achievements/achievements';
 import { getBoardAdapter } from '../game/adapters/interactions';
 import type { Card } from '../core/cards/Card';
 import type { KlondikeState } from '../core/games/klondike/Klondike';
+import type { SpiderState } from '../core/games/spider/Spider';
 
 vi.mock('../ui/components/Board', () => ({
   Board: () => <div data-testid="board-stub">board</div>,
@@ -234,5 +235,67 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     const resumed = getKlondike();
     expect(resumed.seed).toBe(seed);
     expect(resumed.moves).toBe(movesNow);
+  });
+
+  it('Паук: выбор сложности, раздача, подсказка, отмена и отсутствие автосборки', async () => {
+    act(() => {
+      useGameStore.getState().openGame('spider');
+      useGameStore.getState().newGame({ suitCount: 2 });
+    });
+
+    const spider = () => useGameStore.getState().gameState as SpiderState;
+    expect(spider().suitCount).toBe(2);
+    expect(spider().columns).toHaveLength(10);
+    expect(spider().stock).toHaveLength(50);
+    expect(spider().columns.flat().length).toBe(54);
+    expect(spider().moves).toBe(0);
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Паук' })).toBeTruthy();
+    });
+    expect(screen.getByText(/Собрано 0 из 8/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Автосборка/ })).toBeNull();
+
+    act(() => useGameStore.getState().handleSlotClick('spider-stock'));
+    expect(spider().stock).toHaveLength(40);
+    expect(spider().moves).toBe(1);
+    expect(spider().columns.every((col) => col.length >= 6)).toBe(true);
+
+    await act(async () => {
+      await useGameStore.getState().undo();
+    });
+    expect(spider().stock).toHaveLength(50);
+    expect(spider().moves).toBe(0);
+
+    await act(async () => {
+      await useGameStore.getState().requestHint();
+    });
+    expect(useGameStore.getState().hint?.text.length).toBeGreaterThan(3);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Новая$/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Новая партия' })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Четыре масти/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Начать партию/ }));
+    await waitFor(() => {
+      expect((useGameStore.getState().gameState as SpiderState).suitCount).toBe(4);
+    });
+    expect((useGameStore.getState().gameState as SpiderState).moves).toBe(0);
+    expect(useGameStore.getState().isWon).toBe(false);
+
+    // Партия Паука сохраняется и возобновляется без потери расклада.
+    act(() => useGameStore.getState().handleSlotClick('spider-stock'));
+    const played = spider();
+    expect(played.stock).toHaveLength(40);
+    act(() => useGameStore.getState().closeGame());
+    expect(useGameStore.getState().sessions.spider).toBeTruthy();
+    act(() => useGameStore.getState().openGame('spider'));
+    const restored = spider();
+    expect(restored.seed).toBe(played.seed);
+    expect(restored.moves).toBe(played.moves);
+    expect(restored.stock).toHaveLength(40);
+    expect(useGameStore.getState().canUndo).toBe(true);
   });
 });
