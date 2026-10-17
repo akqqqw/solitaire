@@ -3,7 +3,12 @@ import { useGameStore } from './gameStore';
 import { GameSession } from '../core/session/GameSession';
 import { pyramidModule } from '../core/games/pyramid/Pyramid';
 import { pyramidFixture } from '../tests/helpers';
-import { createDailyState } from '../services/dailyChallenges';
+import {
+  createDailyState,
+  dateKey,
+  emptyProgress,
+  touchLogin,
+} from '../services/dailyChallenges';
 import { emptyCareer, emptyStatsMap } from '../core/statistics/stats';
 
 function resetStore(): void {
@@ -50,6 +55,36 @@ describe('Связка состояния с результатами парти
     expect(state.stats.pyramid.totalTimeMs).toBeGreaterThanOrEqual(0);
   });
 
+  it('выдаёт монеты за задание дня и вход, не повторяя награду', () => {
+    const daily = {
+      ...createDailyState(),
+      ids: ['daily_win', 'daily_moves_50', 'daily_no_hint_win'],
+      progress: { ...emptyProgress(), wins: 1 },
+    };
+    useGameStore.setState({ daily, coins: 0 });
+    useGameStore.getState().claimDailyChallenge('daily_win');
+    let state = useGameStore.getState();
+    expect(state.coins).toBe(25);
+    expect(state.daily.claimed).toContain('daily_win');
+    expect(state.career.dailyCompleted).toBe(1);
+    expect(state.achievements.daily_1).toBeTruthy();
+
+    useGameStore.getState().claimDailyChallenge('daily_win');
+    expect(useGameStore.getState().coins).toBe(25);
+
+    const login = touchLogin(
+      { streak: 0, lastActiveDate: null, lastClaimDate: null },
+      dateKey(),
+    );
+    useGameStore.setState({ login });
+    useGameStore.getState().claimDailyLogin();
+    state = useGameStore.getState();
+    expect(state.coins).toBe(35);
+    expect(state.login.lastClaimDate).toBe(dateKey());
+    useGameStore.getState().claimDailyLogin();
+    expect(useGameStore.getState().coins).toBe(35);
+  });
+
   it('начисляет победу, достижения и ежедневный прогресс ровно один раз', () => {
     const wonState = pyramidFixture();
     wonState.removed = Array.from({ length: 7 }, (_, row) =>
@@ -77,6 +112,7 @@ describe('Связка состояния с результатами парти
     expect(state.achievements.first_win).toBeTruthy();
     expect(state.achievements.no_hints).toBeTruthy();
     expect(state.achievements.speed_3min).toBeFalsy();
+    expect(state.notifications.filter((n) => n.kind === 'achievement').length).toBeGreaterThan(0);
     expect(session.resultRecorded).toBe(true);
     expect(useGameStore.getState().finalizeWin()).toBe(false);
     expect(useGameStore.getState().stats.pyramid.wins).toBe(1);
