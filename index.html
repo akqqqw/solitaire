@@ -9,12 +9,20 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/icon.svg" />
     <title>Пасьянс Клуб</title>
-    <!-- SDK Яндекс Игр загружается асинхронно и не мешает офлайн-запуску. -->
+    <!-- SDK Яндекс Игр: /sdk.js — для загрузки через консоль разработчика,
+         запасной абсолютный адрес — для собственного домена. -->
     <script
-      src="https://yandex.ru/games/sdk/v2"
+      src="/sdk.js"
       async
       onload="window.__yaSdkLoaded = true"
-      onerror="window.__yaSdkFailed = true"
+      onerror="(function () {
+        var s = document.createElement('script');
+        s.src = 'https://sdk.games.s3.yandex.net/sdk.js';
+        s.async = true;
+        s.onload = function () { window.__yaSdkLoaded = true; };
+        s.onerror = function () { window.__yaSdkFailed = true; };
+        document.head.appendChild(s);
+      })()"
     ></script>
   </head>
   <body>

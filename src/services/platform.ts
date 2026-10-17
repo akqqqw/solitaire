@@ -67,9 +67,8 @@ class PlatformService {
     // Скрипт SDK подключён асинхронно: даём ему короткое время на загрузку,
     // но не задерживаем игру, если площадка недоступна (офлайн-режим).
     const hasSdkScript =
-      typeof document !== 'undefined' &&
-      !!document.querySelector('script[src*="games/sdk"]');
-    if (hasSdkScript && !window.YaGames && !window.__yaSdkFailed) {
+      typeof document !== 'undefined' && !!document.querySelector('script[src*="sdk"]');
+    if (hasSdkScript && !window.YaGames && !window.__yaSdkFailed && !window.__yaSdkLoaded) {
       const deadline = Date.now() + SDK_WAIT_MS;
       while (!window.YaGames && !window.__yaSdkFailed && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 60));
