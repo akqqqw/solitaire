@@ -154,14 +154,14 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     await waitFor(() => {
       expect(screen.getByText('Выберите пасьянс')).toBeTruthy();
     });
-    const coinsBefore = useGameStore.getState().coins;
+    const hintsBefore = useGameStore.getState().hints;
     fireEvent.click(screen.getByRole('button', { name: 'Ежедневное испытание' }));
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1, name: 'Испытание дня' })).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole('button', { name: /Забрать \d+ монет/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Забрать \d+ подсказ/ }));
     await waitFor(() => {
-      expect(useGameStore.getState().coins).toBeGreaterThan(coinsBefore);
+      expect(useGameStore.getState().hints).toBeGreaterThan(hintsBefore);
     });
     expect(document.querySelectorAll('.challenge-card')).toHaveLength(3);
   }, 20000);
@@ -497,6 +497,8 @@ describe('Пасьянс Клуб — интерфейс и состояние',
         stats: { ...emptyStatsMap(), pyramid: { ...emptyStatsMap().pyramid, played: 4, wins: 2 } },
         career: { ...emptyCareer(), totalPlayed: 4, totalWins: 2 },
         coins: 120,
+        hints: 4,
+        owned: ['onyx'],
       });
       useGameStore.getState().openScreen('settings');
     });
@@ -516,6 +518,8 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     });
     const state = useGameStore.getState();
     expect(state.coins).toBe(0);
+    expect(state.hints).toBe(0);
+    expect(state.owned).toEqual([]);
     expect(state.stats.pyramid.played).toBe(0);
     expect(state.sessions).toEqual({});
     expect(state.achievements).toEqual({});

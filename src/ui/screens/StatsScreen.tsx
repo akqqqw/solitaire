@@ -20,6 +20,7 @@ export function StatsScreen() {
   const stats = useGameStore((s) => s.stats);
   const career = useGameStore((s) => s.career);
   const coins = useGameStore((s) => s.coins);
+  const hints = useGameStore((s) => s.hints);
   const achievements = useGameStore((s) => s.achievements);
   const openScreen = useGameStore((s) => s.openScreen);
   const rate = percent(career.totalWins, career.totalPlayed);
@@ -68,7 +69,8 @@ export function StatsScreen() {
           <Metric label="Побед" value={String(career.totalWins)} hint={`${losses} без победы`} />
           <Metric label="Ходов" value={String(career.totalMoves)} hint="за всё время" />
           <Metric label="Серия" value={String(career.currentStreak)} hint={`рекорд — ${career.maxStreak}`} />
-          <Metric label="Монеты" value={String(coins)} hint="за ежедневные награды" />
+          <Metric label="Монеты" value={String(coins)} hint="куплены в магазине" />
+          <Metric label="Подсказки" value={String(hints)} hint="запас за задания и видео" />
           <Metric label="Дни клуба" value={String(career.dailyCompleted)} hint="ежедневных заданий выполнено" />
         </div>
       </section>

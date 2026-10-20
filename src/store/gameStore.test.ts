@@ -34,6 +34,10 @@ function resetStore(): void {
     daily: createDailyState(),
     sessions: {},
     coins: 0,
+    owned: [],
+    hints: 0,
+    processedPurchases: [],
+    ads: { interstitialAt: 0, rewardedAt: 0 },
   });
 }
 
@@ -58,22 +62,23 @@ describe('Связка состояния с результатами парти
     expect(state.stats.pyramid.totalTimeMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('выдаёт монеты за задание дня и вход, не повторяя награду', () => {
+  it('выдаёт подсказки за задание дня и вход, не повторяя награду', () => {
     const daily = {
       ...createDailyState(),
       ids: ['daily_win', 'daily_moves_50', 'daily_no_hint_win'],
       progress: { ...emptyProgress(), wins: 1 },
     };
-    useGameStore.setState({ daily, coins: 0 });
+    useGameStore.setState({ daily, coins: 0, hints: 0 });
     useGameStore.getState().claimDailyChallenge('daily_win');
     let state = useGameStore.getState();
-    expect(state.coins).toBe(25);
+    expect(state.hints).toBe(2);
+    expect(state.coins).toBe(0);
     expect(state.daily.claimed).toContain('daily_win');
     expect(state.career.dailyCompleted).toBe(1);
     expect(state.achievements.daily_1).toBeTruthy();
 
     useGameStore.getState().claimDailyChallenge('daily_win');
-    expect(useGameStore.getState().coins).toBe(25);
+    expect(useGameStore.getState().hints).toBe(2);
 
     const login = touchLogin(
       { streak: 0, lastActiveDate: null, lastClaimDate: null },
@@ -82,10 +87,10 @@ describe('Связка состояния с результатами парти
     useGameStore.setState({ login });
     useGameStore.getState().claimDailyLogin();
     state = useGameStore.getState();
-    expect(state.coins).toBe(35);
+    expect(state.hints).toBe(3);
     expect(state.login.lastClaimDate).toBe(dateKey());
     useGameStore.getState().claimDailyLogin();
-    expect(useGameStore.getState().coins).toBe(35);
+    expect(useGameStore.getState().hints).toBe(3);
   });
 
   it('выбор карты нажатием даёт легальные цели для подсветки', () => {

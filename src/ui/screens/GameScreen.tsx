@@ -131,7 +131,9 @@ export function GameScreen() {
   const meta = GAME_META[gameId];
   const gameStats = stats[gameId];
   const canAuto = gameId === 'klondike' || gameId === 'freecell';
+  const stockHints = useGameStore((s) => s.hints);
   const freeHintsLeft = Math.max(0, FREE_HINTS - hintsUsed);
+  const hintBadge = freeHintsLeft > 0 ? freeHintsLeft : stockHints;
   const hintText = hint?.text ?? null;
   const dealIsWon = isWon && !winDismissed;
 
@@ -223,10 +225,21 @@ export function GameScreen() {
             <span className="action-icon"><Icon name="undo" size={21} /></span>
             <span>Отменить</span>
           </button>
-          <button className="action-btn" onClick={() => void requestHint()} disabled={busy}>
+          <button
+            className="action-btn"
+            onClick={() => void requestHint()}
+            disabled={busy}
+            title={
+              freeHintsLeft > 0
+                ? `Бесплатных подсказок в этой партии: ${freeHintsLeft}`
+                : stockHints > 0
+                  ? `Подсказок в запасе: ${stockHints}`
+                  : 'Запас подсказок пуст — их дают за видео или задания дня'
+            }
+          >
             <span className="action-icon"><Icon name="hint" size={21} /></span>
             <span>Подсказка</span>
-            {freeHintsLeft > 0 ? <span className="action-badge">{freeHintsLeft}</span> : null}
+            {hintBadge > 0 ? <span className="action-badge">{hintBadge}</span> : null}
           </button>
           {canAuto ? (
             <button className="action-btn" onClick={autoCollect}>

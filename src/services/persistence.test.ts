@@ -61,7 +61,7 @@ describe('Сохранение профиля', () => {
     localStorage.setItem(LS_KEY, '{not json');
     localStorage.setItem(LS_BACKUP, JSON.stringify({ hello: 'world' }));
     const loaded = await loadProfile();
-    expect(loaded.version).toBe(1);
+    expect(loaded.version).toBe(2);
     expect(loaded.career.totalPlayed).toBe(0);
     expect(loaded.sessions).toEqual({});
   });

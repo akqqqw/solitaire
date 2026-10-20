@@ -265,7 +265,7 @@ describe('Ежедневные задания', () => {
     expect(login.streak).toBe(1);
     expect(isLoginRewardClaimable(login)).toBe(true);
     const reward = claimLoginReward(login, '2026-10-14');
-    expect(reward.coins).toBe(10);
+    expect(reward.hints).toBe(1);
     expect(reward.login.lastClaimDate).toBe('2026-10-14');
     expect(isLoginRewardClaimable(reward.login, '2026-10-14')).toBe(false);
     expect(() => claimLoginReward(reward.login, '2026-10-14')).toThrow(/уже получена/);
@@ -280,7 +280,7 @@ describe('Ежедневные задания', () => {
 describe('Профиль и сохранения', () => {
   it('создаёт валидный профиль по умолчанию', () => {
     const profile = createDefaultProfile();
-    expect(profile.version).toBe(1);
+    expect(profile.version).toBe(2);
     expect(isProfileLike(JSON.parse(JSON.stringify(profile)))).toBe(true);
     expect(profile.settings.cardBack).toBe('emerald');
     expect(profile.sessions).toEqual({});
@@ -297,7 +297,7 @@ describe('Профиль и сохранения', () => {
       settings: { cardBack: 'unknown', sounds: false, animations: 'yes' },
       sessions: 'broken',
     });
-    expect(clean.version).toBe(1);
+    expect(clean.version).toBe(2);
     expect(clean.updatedAt).toBe(1234);
     expect(clean.stats.pyramid.played).toBe(2);
     expect(clean.stats.spider.played).toBe(0);
@@ -310,6 +310,21 @@ describe('Профиль и сохранения', () => {
     expect(clean.settings.targetHints).toBe(false);
     expect(clean.sessions).toEqual({});
     expect(profileUpdatedAt(clean)).toBe(1234);
+
+    // Покупки: дубликаты и мусор отбрасываются, время рекламы нормализуется.
+    const cleaned = sanitizeProfile({
+      coins: 500,
+      hints: 4.8,
+      owned: ['onyx', 'onyx', 'emerald', 'nope', 7],
+      processedPurchases: ['token-1', 'token-1', 42],
+      ads: { interstitialAt: 123.9, rewardedAt: -1 },
+    });
+    expect(cleaned.coins).toBe(500);
+    expect(cleaned.hints).toBe(4);
+    expect(cleaned.owned).toEqual(['onyx']);
+    expect(cleaned.processedPurchases).toEqual(['token-1']);
+    expect(cleaned.ads.interstitialAt).toBe(123);
+    expect(cleaned.ads.rewardedAt).toBe(0);
   });
 
   it('проверяет сохранённые партии через правила режима', () => {

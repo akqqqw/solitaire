@@ -22,7 +22,8 @@ export interface ChallengeDef {
   title: string;
   description: string;
   target: number;
-  reward: number;
+  /** Награда в подсказках: монеты в игре только покупаются. */
+  hintReward: number;
   metric: 'wins' | 'moves' | 'modes' | 'winsByGame' | 'noHintWins';
   gameId?: GameId;
 }
@@ -38,7 +39,7 @@ const GENERIC_CHALLENGES: ChallengeDef[] = [
     title: 'Первая победа дня',
     description: 'Выиграйте одну партию в любом режиме',
     target: 1,
-    reward: 25,
+    hintReward: 2,
     metric: 'wins',
   },
   {
@@ -46,7 +47,7 @@ const GENERIC_CHALLENGES: ChallengeDef[] = [
     title: 'Разминка',
     description: 'Сделайте 50 ходов за день',
     target: 50,
-    reward: 20,
+    hintReward: 1,
     metric: 'moves',
   },
   {
@@ -54,7 +55,7 @@ const GENERIC_CHALLENGES: ChallengeDef[] = [
     title: 'Смена декораций',
     description: 'Сыграйте в трёх разных режимах',
     target: 3,
-    reward: 30,
+    hintReward: 2,
     metric: 'modes',
   },
 ];
@@ -80,7 +81,7 @@ const GAME_CHALLENGES: ChallengeDef[] = [
             : 'Пирамида'
     }`,
     target: 1,
-    reward: 30,
+    hintReward: 2,
     metric: 'winsByGame' as const,
     gameId,
   })),
@@ -89,7 +90,7 @@ const GAME_CHALLENGES: ChallengeDef[] = [
     title: 'Своим умом',
     description: 'Выиграйте партию, не используя подсказки',
     target: 1,
-    reward: 35,
+    hintReward: 3,
     metric: 'noHintWins',
   },
 ];
@@ -245,7 +246,8 @@ export interface LoginState {
   lastClaimDate: string | null;
 }
 
-export const LOGIN_REWARDS = [10, 15, 20, 25, 30, 40, 60];
+/** Награда за вход по дням серии — в подсказках, а не в монетах. */
+export const LOGIN_REWARDS = [1, 1, 1, 2, 2, 2, 3];
 
 export function emptyLoginState(): LoginState {
   return { streak: 0, lastActiveDate: null, lastClaimDate: null };
@@ -271,13 +273,12 @@ export function isLoginRewardClaimable(state: LoginState, today = dateKey()): bo
 export function claimLoginReward(
   state: LoginState,
   today = dateKey(),
-): { login: LoginState; coins: number } {
+): { login: LoginState; hints: number } {
   if (!isLoginRewardClaimable(state, today)) throw new Error('Награда уже получена сегодня');
   const day = loginRewardDay(state);
-  const coins = LOGIN_REWARDS[day - 1];
   return {
     login: { ...state, lastClaimDate: today },
-    coins,
+    hints: LOGIN_REWARDS[day - 1],
   };
 }
 

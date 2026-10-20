@@ -4,7 +4,8 @@ import { PageShell } from '../components/PageShell';
 import { Modal } from '../components/Modal';
 import { CardArt } from '../components/CardArt';
 import { Icon } from '../components/Icon';
-import { CARD_BACKS, TABLE_THEMES } from '../../store/profile';
+import { CARD_BACKS, TABLE_THEMES, isCosmeticOwned } from '../../store/profile';
+import { formatCoins } from '../utils';
 import { platform } from '../../services/platform';
 
 function Toggle({
@@ -39,7 +40,9 @@ function Toggle({
 
 export function SettingsScreen() {
   const settings = useGameStore((s) => s.settings);
+  const owned = useGameStore((s) => s.owned);
   const updateSettings = useGameStore((s) => s.updateSettings);
+  const openScreen = useGameStore((s) => s.openScreen);
   const resetProgress = useGameStore((s) => s.resetProgress);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -66,20 +69,36 @@ export function SettingsScreen() {
           <span className="pill">{CARD_BACKS.length} варианта</span>
         </div>
         <div className="card-back-grid">
-          {CARD_BACKS.map((back) => (
-            <button
-              key={back.id}
-              className={`card-back-option ${settings.cardBack === back.id ? 'is-active' : ''}`}
-              onClick={() => updateSettings({ cardBack: back.id })}
-              aria-pressed={settings.cardBack === back.id}
-            >
-              <span className="card-back-preview">
-                <CardArt suit="spades" rank={1} faceUp={false} back={back.id} />
-              </span>
-              <span>{back.label}</span>
-              {settings.cardBack === back.id ? <i>✓</i> : null}
-            </button>
-          ))}
+          {CARD_BACKS.map((back) => {
+            const unlocked = isCosmeticOwned(owned, back.id);
+            return (
+              <button
+                key={back.id}
+                className={`card-back-option ${settings.cardBack === back.id ? 'is-active' : ''} ${
+                  unlocked ? '' : 'is-locked'
+                }`}
+                onClick={() =>
+                  unlocked ? updateSettings({ cardBack: back.id }) : openScreen('shop')
+                }
+                aria-pressed={settings.cardBack === back.id}
+                title={unlocked ? back.label : `Купить за ${back.price} монет`}
+              >
+                <span className={`card-back-preview ${unlocked ? '' : 'is-locked-art'}`}>
+                  <CardArt suit="spades" rank={1} faceUp={false} back={back.id} />
+                </span>
+                <span>{back.label}</span>
+                {unlocked ? (
+                  settings.cardBack === back.id ? (
+                    <i>✓</i>
+                  ) : null
+                ) : (
+                  <i className="style-price">
+                    <Icon name="coin" size={12} /> {formatCoins(back.price)}
+                  </i>
+                )}
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -91,25 +110,47 @@ export function SettingsScreen() {
           </div>
         </div>
         <div className="theme-grid">
-          {TABLE_THEMES.map((theme) => (
-            <button
-              key={theme.id}
-              className={`theme-option theme-${theme.id} ${
-                settings.tableTheme === theme.id ? 'is-active' : ''
-              }`}
-              onClick={() => updateSettings({ tableTheme: theme.id })}
-              aria-pressed={settings.tableTheme === theme.id}
-            >
-              <span className="theme-swatch">
-                <span className="theme-swatch-card" />
-                <span className="theme-swatch-card second" />
-              </span>
-              <span>{theme.label}</span>
-              {settings.tableTheme === theme.id ? <i>✓</i> : null}
-            </button>
-          ))}
+          {TABLE_THEMES.map((theme) => {
+            const unlocked = isCosmeticOwned(owned, theme.id);
+            return (
+              <button
+                key={theme.id}
+                className={`theme-option theme-${theme.id} ${
+                  settings.tableTheme === theme.id ? 'is-active' : ''
+                } ${unlocked ? '' : 'is-locked'}`}
+                onClick={() =>
+                  unlocked ? updateSettings({ tableTheme: theme.id }) : openScreen('shop')
+                }
+                aria-pressed={settings.tableTheme === theme.id}
+                title={unlocked ? theme.label : `Купить за ${theme.price} монет`}
+              >
+                <span className={`theme-swatch ${unlocked ? '' : 'is-locked-art'}`}>
+                  <span className="theme-swatch-card" />
+                  <span className="theme-swatch-card second" />
+                </span>
+                <span>{theme.label}</span>
+                {unlocked ? (
+                  settings.tableTheme === theme.id ? (
+                    <i>✓</i>
+                  ) : null
+                ) : (
+                  <i className="style-price">
+                    <Icon name="coin" size={12} /> {formatCoins(theme.price)}
+                  </i>
+                )}
+              </button>
+            );
+          })}
         </div>
       </section>
+
+      <p className="settings-shop-hint muted">
+        Замок и цена означают, что стиль ещё не куплен — открыть коллекцию можно в{' '}
+        <button className="text-btn" onClick={() => openScreen('shop')}>
+          магазине
+          <Icon name="chevron" size={14} />
+        </button>
+      </p>
 
       <section className="settings-section glass">
         <div className="settings-head">
@@ -167,13 +208,13 @@ export function SettingsScreen() {
             <Icon name="trophy" size={18} />
             <div>
               <strong>Реклама и лидерборды</strong>
-              <p className="muted">Межстраничная реклама между партиями и Rewarded Video за дополнительные подсказки. Вне платформы всё работает без рекламы.</p>
+              <p className="muted">Межстраничная реклама только после завершённой партии и не чаще раза в 3,5 минуты. Rewarded Video даёт подсказки. Монеты — только за реальную покупку. Вне платформы рекламы нет.</p>
             </div>
           </li>
         </ul>
         <div className="settings-version">
           <span>Пасьянс Клуб 0.1.0</span>
-          <span className="muted">Схема сохранений v1 · офлайн-кэш PWA</span>
+          <span className="muted">Схема сохранений v2 · офлайн-кэш PWA</span>
         </div>
       </section>
 
@@ -181,8 +222,8 @@ export function SettingsScreen() {
         <div>
           <strong>Сбросить прогресс</strong>
           <p className="muted">
-            Удаляются статистика, достижения, ежедневные задания, монеты и все сохранённые партии.
-            Это действие нельзя отменить.
+            Удаляются статистика, достижения, ежедневные задания, купленные стили, монеты и все
+            сохранённые партии. Это действие нельзя отменить.
           </p>
         </div>
         <button className="btn btn-danger" onClick={() => setConfirmReset(true)}>

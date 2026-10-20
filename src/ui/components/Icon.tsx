@@ -16,7 +16,8 @@ export type IconName =
   | 'chevron'
   | 'pause'
   | 'cards'
-  | 'coin';
+  | 'coin'
+  | 'shop';
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const common = {
@@ -143,6 +144,14 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
           <rect x="7" y="4" width="12" height="16" rx="2" transform="rotate(8 13 12)" />
           <rect x="4" y="5" width="12" height="16" rx="2" transform="rotate(-6 10 13)" />
           <path d="M10 11l1.4 1.8L10 14.6l-1.4-1.8L10 11z" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'shop':
+      return (
+        <svg {...common}>
+          <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z" />
+          <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
+          <path d="M9.5 12.5h5M9.5 16h3" />
         </svg>
       );
     case 'coin':

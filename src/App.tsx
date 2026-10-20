@@ -6,6 +6,7 @@ import { StatsScreen } from './ui/screens/StatsScreen';
 import { AchievementsScreen } from './ui/screens/AchievementsScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { DailyScreen } from './ui/screens/DailyScreen';
+import { ShopScreen } from './ui/screens/ShopScreen';
 import { Notifications, Toast } from './ui/components/Notifications';
 import { Brand } from './ui/components/Brand';
 
@@ -65,6 +66,7 @@ export default function App() {
   else if (screen === 'achievements') content = <AchievementsScreen />;
   else if (screen === 'settings') content = <SettingsScreen />;
   else if (screen === 'daily') content = <DailyScreen />;
+  else if (screen === 'shop') content = <ShopScreen />;
   else content = <MenuScreen />;
 
   return (

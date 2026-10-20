@@ -2,7 +2,7 @@ import { useGameStore } from '../../store/gameStore';
 import { GAME_META, GAME_ORDER } from '../gameMeta';
 import { MiniBoard } from '../components/MiniBoard';
 import { GameGlyph } from '../components/GameGlyph';
-import { Brand, CoinChip } from '../components/Brand';
+import { Brand, CoinChip, HintChip } from '../components/Brand';
 import { Icon } from '../components/Icon';
 import { CardArt } from '../components/CardArt';
 import { formatDuration, formatCoins, percent, pluralize } from '../utils';
@@ -23,6 +23,7 @@ export function MenuScreen() {
   const login = useGameStore((s) => s.login);
   const achievements = useGameStore((s) => s.achievements);
   const coins = useGameStore((s) => s.coins);
+  const hints = useGameStore((s) => s.hints);
   const openGame = useGameStore((s) => s.openGame);
   const openScreen = useGameStore((s) => s.openScreen);
 
@@ -47,7 +48,16 @@ export function MenuScreen() {
       <header className="menu-header">
         <Brand />
         <div className="menu-header-actions">
+          <HintChip hints={hints} />
           <CoinChip coins={coins} />
+          <button
+            className="icon-btn"
+            onClick={() => openScreen('shop')}
+            aria-label="Магазин"
+            title="Магазин"
+          >
+            <Icon name="shop" size={21} />
+          </button>
           <button
             className={`icon-btn ${loginClaimable ? 'has-dot' : ''}`}
             onClick={() => openScreen('daily')}
@@ -235,6 +245,14 @@ export function MenuScreen() {
             </span>
             <Icon name="chevron" size={16} />
           </button>
+          <button className="quick-card" onClick={() => openScreen('shop')}>
+            <Icon name="shop" size={23} />
+            <span>
+              <strong>Магазин</strong>
+              <small>Рубашки, сукно и монеты</small>
+            </span>
+            <Icon name="chevron" size={16} />
+          </button>
           <button className="quick-card" onClick={() => openScreen('settings')}>
             <Icon name="settings" size={23} />
             <span>
@@ -257,9 +275,9 @@ export function MenuScreen() {
               </p>
             </div>
           </div>
-          <span className="club-note-coins">
+          <button className="club-note-coins" onClick={() => openScreen('shop')}>
             {formatCoins(coins)} <Icon name="coin" size={15} />
-          </span>
+          </button>
         </section>
       </main>
 

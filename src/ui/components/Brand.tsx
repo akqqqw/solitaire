@@ -27,10 +27,26 @@ export function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 export function CoinChip({ coins }: { coins: number }) {
+  const openScreen = useGameStore((s) => s.openScreen);
   return (
-    <span className="coin-chip" title="Клубные монеты">
+    <button
+      className="coin-chip"
+      title="Клубные монеты · открыть магазин"
+      aria-label={`Клубные монеты: ${coins}. Открыть магазин`}
+      onClick={() => openScreen('shop')}
+    >
       <Icon name="coin" size={17} />
       <span>{new Intl.NumberFormat('ru-RU').format(coins)}</span>
+      <span className="coin-chip-plus" aria-hidden="true">+</span>
+    </button>
+  );
+}
+
+export function HintChip({ hints }: { hints: number }) {
+  return (
+    <span className="hint-chip" title="Запас подсказок">
+      <Icon name="hint" size={16} />
+      <span>{hints}</span>
     </span>
   );
 }

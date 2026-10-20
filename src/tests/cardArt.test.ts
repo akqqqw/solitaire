@@ -122,10 +122,10 @@ function shapePoints(calls: Call[], padding: number): Array<[number, number]> {
 }
 
 describe('cardArt: отрисовка карт', () => {
-  it('атлас содержит 52 лица и 4 рубашки, имена кадров уникальны', () => {
+  it('атлас содержит 52 лица и все рубашки, имена кадров уникальны', () => {
     const frames = atlasFrameIds();
-    expect(frames).toHaveLength(56);
-    expect(new Set(frames).size).toBe(56);
+    expect(frames).toHaveLength(52 + CARD_BACKS.length);
+    expect(new Set(frames).size).toBe(52 + CARD_BACKS.length);
     for (const suit of SUITS) {
       for (let rank = 1; rank <= 13; rank += 1) {
         expect(frames).toContain(faceFrameId(suit, rank));

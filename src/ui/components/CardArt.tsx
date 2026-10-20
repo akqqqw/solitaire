@@ -8,6 +8,10 @@ const BACK_COLORS: Record<CardBackId, { deep: string; accent: string; line: stri
   midnight: { deep: '#1b2742', accent: '#b9c6dd', line: '#2c3f63' },
   burgundy: { deep: '#4a1d26', accent: '#e2b177', line: '#6c2c39' },
   sapphire: { deep: '#143453', accent: '#a9c7e8', line: '#205074' },
+  onyx: { deep: '#1a1a1e', accent: '#d9c27a', line: '#2e2e36' },
+  royal: { deep: '#3a1d50', accent: '#e0c07a', line: '#553074' },
+  frost: { deep: '#1f3d4d', accent: '#cfe6f2', line: '#2f5b70' },
+  aurum: { deep: '#2b2113', accent: '#f0d08a', line: '#4a3820' },
 };
 
 const RED = '#b12637';

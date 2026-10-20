@@ -33,7 +33,9 @@ async function boot(): Promise<void> {
   }, { timeout: 4000 });
 }
 
-function openScreen(name: 'menu' | 'stats' | 'achievements' | 'settings' | 'daily'): void {
+function openScreen(
+  name: 'menu' | 'stats' | 'achievements' | 'settings' | 'daily' | 'shop',
+): void {
   act(() => {
     useGameStore.getState().openScreen(name);
   });
@@ -74,7 +76,7 @@ describe('Экраны: каждая кнопка делает то, что об
       expect(screen.getByRole('heading', { level: 1, name: 'Настройки' })).toBeTruthy();
     });
 
-    const back = CARD_BACKS[CARD_BACKS.length - 1];
+    const back = [...CARD_BACKS].reverse().find((item) => item.price === 0)!;
     const backButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.card-back-option')).find(
       (element) => element.textContent?.includes(back.label),
     );
@@ -84,7 +86,7 @@ describe('Экраны: каждая кнопка делает то, что об
     expect(backButton?.getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelectorAll('.card-back-option.is-active')).toHaveLength(1);
 
-    const theme = TABLE_THEMES[TABLE_THEMES.length - 1];
+    const theme = [...TABLE_THEMES].reverse().find((item) => item.price === 0)!;
     const themeButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.theme-option')).find(
       (element) => element.textContent?.includes(theme.label),
     );
@@ -110,6 +112,18 @@ describe('Экраны: каждая кнопка делает то, что об
     expect(hintsSwitch.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(hintsSwitch);
     expect(useGameStore.getState().settings.targetHints).toBe(false);
+
+    // Заблокированный стиль не надевается, а ведёт на витрину.
+    const lockedBack = CARD_BACKS.find((item) => item.price > 0)!;
+    const lockedButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.card-back-option'),
+    ).find((element) => element.textContent?.includes(lockedBack.label));
+    expect(lockedButton).toBeTruthy();
+    fireEvent.click(lockedButton as HTMLButtonElement);
+    await waitFor(() => {
+      expect(useGameStore.getState().screen).toBe('shop');
+      expect(useGameStore.getState().settings.cardBack).toBe(back.id);
+    });
 
     // Возврат в меню действительно возвращает в меню.
     fireEvent.click(screen.getByRole('button', { name: /Меню/ }));
@@ -210,6 +224,43 @@ describe('Экраны: каждая кнопка делает то, что об
     await waitFor(() => {
       expect(document.querySelector('.toast')?.textContent ?? '').toContain('Автосборка');
     });
+  });
+
+  it('магазин: покупка стиля за монеты, экипировка и недоступная оплата', async () => {
+    await boot();
+    openScreen('shop');
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Магазин' })).toBeTruthy();
+    });
+
+    // В офлайне покупки честно заблокированы, но витрина видна.
+    const packButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.shop-buy'));
+    expect(packButtons).toHaveLength(4);
+    for (const button of packButtons) expect(button.disabled).toBe(true);
+
+    // Копим на самый дешёвый платный стиль и покупаем его прямо на витрине.
+    const paid = CARD_BACKS.find((item) => item.price > 0)!;
+    act(() => {
+      useGameStore.setState({ coins: paid.price });
+    });
+    const card = Array.from(document.querySelectorAll<HTMLElement>('.shop-style')).find((el) =>
+      el.textContent?.includes(paid.label),
+    );
+    expect(card).toBeTruthy();
+    const buy = within(card!).getByRole('button', { name: /Купить/ });
+    fireEvent.click(buy);
+    await waitFor(() => {
+      expect(useGameStore.getState().owned).toContain(paid.id);
+    });
+    expect(useGameStore.getState().settings.cardBack).toBe(paid.id);
+    expect(useGameStore.getState().coins).toBe(0);
+
+    // После покупки кнопка меняется на «Выбрано», второй оплаты нет.
+    const updated = Array.from(document.querySelectorAll<HTMLElement>('.shop-style')).find((el) =>
+      el.textContent?.includes(paid.label),
+    );
+    expect(updated?.querySelector('button')?.disabled).toBe(true);
+    expect(updated?.querySelector('button')?.textContent).toContain('Выбрано');
   });
 
   it('правила открываются во всех четырёх режимах и содержат список шагов', async () => {

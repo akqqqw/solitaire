@@ -34,15 +34,35 @@ import {
   saveProfileLocal,
 } from '../services/persistence';
 import { LEADERBOARDS, platform } from '../services/platform';
+import { COIN_PACKS, iap, type PurchaseProduct } from '../services/iap';
+import { canClaimRewarded, canShowInterstitial, rewardedCooldownLeft } from '../services/adPolicy';
 import { sound } from '../services/sound';
-import { createDefaultProfile, type ProfileData, type Settings } from './profile';
+import {
+  CARD_BACKS,
+  createDefaultProfile,
+  cosmeticPrice,
+  isCosmeticOwned,
+  REWARDED_HINTS,
+  SCHEMA_VERSION,
+  TABLE_THEMES,
+  type AdState,
+  type ProfileData,
+  type Settings,
+} from './profile';
 import {
   getBoardAdapter,
   type InteractionResult,
   type Selection,
 } from '../game/adapters/interactions';
 
-export type Screen = 'menu' | 'game' | 'stats' | 'achievements' | 'settings' | 'daily';
+export type Screen =
+  | 'menu'
+  | 'game'
+  | 'stats'
+  | 'achievements'
+  | 'settings'
+  | 'daily'
+  | 'shop';
 export type Modal = 'rules' | 'new-game' | 'pause' | null;
 
 export interface AppNotification {
@@ -64,10 +84,18 @@ interface ProfileState {
   sessions: Partial<Record<GameId, StoredSession>>;
   settings: Settings;
   coins: number;
+  owned: string[];
+  hints: number;
+  processedPurchases: string[];
+  ads: AdState;
 }
 
 export interface AppState extends ProfileState {
   hydrated: boolean;
+  /** Доступны ли реальные покупки (инициализированы ли платежи площадки). */
+  payments: boolean;
+  /** Витрина с ценами площадки; до ответа каталога — цены-заглушки. */
+  catalog: PurchaseProduct[];
   screen: Screen;
   modal: Modal;
   session: AnyGameSession | null;
@@ -101,6 +129,11 @@ export interface AppState extends ProfileState {
   claimDailyChallenge(id: string): void;
   claimDailyLogin(): void;
   updateSettings(partial: Partial<Settings>): void;
+  buyCosmetic(id: string): void;
+  equipCosmetic(id: string): void;
+  purchaseCoins(packId: string): Promise<void>;
+  claimRewardedHints(): Promise<void>;
+  syncPurchases(): Promise<void>;
   resetProgress(): Promise<void>;
   showToast(message: string): void;
   dismissNotification(id: string): void;
@@ -119,7 +152,6 @@ let latestProfile: ProfileData | null = null;
 let notificationCounter = 0;
 let toastCounter = 0;
 let hintTimer: ReturnType<typeof setTimeout> | null = null;
-let lastInterstitial = 0;
 
 function buildProfile(state: AppState): ProfileData {
   const sessions = { ...state.sessions };
@@ -129,7 +161,7 @@ function buildProfile(state: AppState): ProfileData {
     sessions[state.session.gameId] = state.session.serialize();
   }
   return {
-    version: 1,
+    version: SCHEMA_VERSION,
     updatedAt: Date.now(),
     stats: state.stats,
     career: state.career,
@@ -139,6 +171,10 @@ function buildProfile(state: AppState): ProfileData {
     sessions,
     settings: state.settings,
     coins: state.coins,
+    owned: state.owned,
+    hints: state.hints,
+    processedPurchases: state.processedPurchases,
+    ads: state.ads,
   };
 }
 
@@ -152,6 +188,15 @@ function queueSave(get: StoreGet): void {
       if (platform.available && latestProfile) void platform.pushCloudSave(latestProfile);
     }, 1800);
   }, 300);
+}
+
+/** Русское склонение для «подсказка/подсказки/подсказок». */
+function hintsWord(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'подсказка';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'подсказки';
+  return 'подсказок';
 }
 
 function notification(
@@ -183,7 +228,7 @@ function challengeCompletionNotifications(
         notification(
           'daily',
           'Ежедневное задание выполнено',
-          `${def.title} · награда ${def.reward} монет — заберите в разделе «Испытание»`,
+          `${def.title} · награда ${def.hintReward} ${hintsWord(def.hintReward)} — заберите в разделе «Испытание»`,
           '☀',
         ),
       );
@@ -249,11 +294,17 @@ function statusFields(session: AnyGameSession | null) {
   };
 }
 
-function maybeInterstitial(wasWon: boolean): void {
-  if (!wasWon || !platform.available) return;
-  const now = Date.now();
-  if (now - lastInterstitial < 120_000) return;
-  lastInterstitial = now;
+/**
+ * Межстраничная реклама — только после завершённой партии и не чаще
+ * INTERSTITIAL_INTERVAL_MS. Отметка о показе хранится в профиле,
+ * поэтому перезапуск игры не даёт обойти интервал.
+ */
+function maybeInterstitial(set: StoreSet, get: StoreGet): void {
+  if (!platform.available) return;
+  const ads = get().ads;
+  if (!canShowInterstitial(ads)) return;
+  set({ ads: { ...ads, interstitialAt: Date.now() } });
+  queueSave(get);
   void platform.showInterstitial();
 }
 
@@ -314,10 +365,52 @@ function applyInteractionResult(
   return false;
 }
 
+/**
+ * Начисляет монеты за покупку ровно один раз.
+ *
+ * Токен покупки — единственный идентификатор транзакции, поэтому он попадает
+ * в processedPurchases до сохранения. Площадка требует подтвердить расходуемую
+ * покупку (consumePurchase), иначе товар нельзя купить повторно.
+ */
+async function grantPurchase(
+  token: string,
+  productId: string,
+  coins: number,
+  set: StoreSet,
+  get: StoreGet,
+): Promise<void> {
+  const state = get();
+  if (state.processedPurchases.includes(token)) {
+    void iap.consume(token);
+    return;
+  }
+  set({
+    coins: state.coins + coins,
+    processedPurchases: [...state.processedPurchases, token].slice(-50),
+    notifications: pushNotifications(state.notifications, [
+      notification('reward', 'Покупка завершена', `+${coins} монет на клубный счёт`, '◆'),
+    ]),
+  });
+  sound.play('win');
+  // Сохраняем начисление до подтверждения покупки: если подтвердить раньше,
+  // а игра закроется до записи профиля, монеты пропадут безвозвратно.
+  latestProfile = buildProfile(get());
+  await saveProfile(latestProfile);
+  const consumed = await iap.consume(token);
+  if (!consumed) {
+    // Товар останется неподтверждённым; при следующем запуске syncPurchases
+    // увидит его в getPurchases(), а токен уже в processedPurchases — повторно
+    // монеты не начислятся.
+    console.warn('Не удалось подтвердить покупку', productId);
+  }
+}
+
 const defaults = createDefaultProfile();
 
 export const useGameStore = create<AppState>((set, get) => ({
   hydrated: false,
+  payments: false,
+  catalog: [],
   screen: 'menu',
   modal: null,
   session: null,
@@ -339,10 +432,17 @@ export const useGameStore = create<AppState>((set, get) => ({
   sessions: {},
   settings: defaults.settings,
   coins: defaults.coins,
+  owned: defaults.owned,
+  hints: defaults.hints,
+  processedPurchases: defaults.processedPurchases,
+  ads: defaults.ads,
 
   async init() {
     if (get().hydrated) return;
     await platform.init();
+    await iap.init();
+    // Цены догружаем фоном: витрина уже доступна с ценами-заглушками.
+    void iap.catalog().then((catalog) => set({ catalog }));
     const loaded = await loadProfile();
     const cloud = await platform.pullCloudSave();
     const profile = resolveProfileConflict(loaded, cloud);
@@ -364,6 +464,7 @@ export const useGameStore = create<AppState>((set, get) => ({
     };
     set({
       hydrated: true,
+      payments: iap.available,
       stats: profile.stats,
       career: profile.career,
       achievements: profile.achievements,
@@ -372,9 +473,15 @@ export const useGameStore = create<AppState>((set, get) => ({
       sessions: profile.sessions,
       settings: profile.settings,
       coins: profile.coins,
+      owned: profile.owned,
+      hints: profile.hints,
+      processedPurchases: profile.processedPurchases,
+      ads: profile.ads,
       screen: 'menu',
     });
     syncAchievements((partial) => set(partial), get);
+    // Покупки, оформленные в прошлом сеансе, но не подтверждённые.
+    void get().syncPurchases();
     latestProfile = buildProfile(get());
     void saveProfile(latestProfile);
   },
@@ -472,6 +579,8 @@ export const useGameStore = create<AppState>((set, get) => ({
       return;
     }
     const wasWon = session.state.won;
+    // Реклама уместна после сыгранной партии, а не после случайного выхода.
+    const playedRound = wasWon || session.state.moves > 0;
     const sessions = { ...state.sessions };
     if (wasWon) {
       delete sessions[session.gameId];
@@ -493,7 +602,7 @@ export const useGameStore = create<AppState>((set, get) => ({
       modal: null,
     });
     queueSave(get);
-    maybeInterstitial(wasWon);
+    if (playedRound) maybeInterstitial((partial) => set(partial), get);
   },
 
   openScreen(screen) {
@@ -584,16 +693,37 @@ export const useGameStore = create<AppState>((set, get) => ({
       get().showToast('Доступных ходов больше нет. Попробуйте отменить ход.');
       return;
     }
-    if (session.hintsUsed >= FREE_HINTS && platform.available) {
-      session.pause();
-      set({ busy: true });
-      const rewarded = await platform.showRewarded();
-      set({ busy: false });
-      if (get().session !== session) return;
-      if (!rewarded) {
-        session.resume();
-        get().showToast('Посмотрите короткое видео, чтобы получить дополнительную подсказку.');
-        return;
+    if (session.hintsUsed >= FREE_HINTS) {
+      const state = get();
+      if (state.hints > 0) {
+        set({ hints: state.hints - 1 });
+      } else {
+        if (!platform.available) {
+          get().showToast('Подсказки закончились. Новые можно получить за ролик в Яндекс Играх.');
+          return;
+        }
+        if (!canClaimRewarded(state.ads)) {
+          get().showToast(
+            `Следующая награда за видео через ${rewardedCooldownLeft(state.ads)} с.`,
+          );
+          return;
+        }
+        session.pause();
+        set({ busy: true });
+        const rewarded = await platform.showRewarded();
+        set({ busy: false });
+        if (get().session !== session) return;
+        if (!rewarded) {
+          session.resume();
+          get().showToast('Посмотрите короткое видео, чтобы получить дополнительные подсказки.');
+          return;
+        }
+        // Ролик сразу даёт запас подсказок, одна из них тратится на текущую.
+        set({
+          hints: get().hints + REWARDED_HINTS - 1,
+          ads: { ...get().ads, rewardedAt: Date.now() },
+        });
+        get().showToast(`+${REWARDED_HINTS} ${hintsWord(REWARDED_HINTS)} за просмотр видео.`);
       }
     }
     session.hintsUsed += 1;
@@ -642,9 +772,14 @@ export const useGameStore = create<AppState>((set, get) => ({
       set({
         daily: nextDaily,
         career: { ...get().career, dailyCompleted: get().career.dailyCompleted + 1 },
-        coins: get().coins + def.reward,
+        hints: get().hints + def.hintReward,
         notifications: pushNotifications(get().notifications, [
-          notification('reward', 'Награда получена', `+${def.reward} монет за «${def.title}»`, '✦'),
+          notification(
+            'reward',
+            'Награда получена',
+            `+${def.hintReward} ${hintsWord(def.hintReward)} за «${def.title}»`,
+            '✦',
+          ),
         ]),
       });
       syncAchievements((partial) => set(partial), get);
@@ -666,9 +801,14 @@ export const useGameStore = create<AppState>((set, get) => ({
       const result = claimLoginReward(login);
       set({
         login: result.login,
-        coins: get().coins + result.coins,
+        hints: get().hints + result.hints,
         notifications: pushNotifications(get().notifications, [
-          notification('reward', 'Ежедневная награда', `+${result.coins} монет за вход в клуб`, '☀'),
+          notification(
+            'reward',
+            'Ежедневная награда',
+            `+${result.hints} ${hintsWord(result.hints)} за вход в клуб`,
+            '☀',
+          ),
         ]),
       });
       syncAchievements((partial) => set(partial), get);
@@ -680,11 +820,115 @@ export const useGameStore = create<AppState>((set, get) => ({
   },
 
   updateSettings(partial) {
-    const settings = { ...get().settings, ...partial };
+    const state = get();
+    // Стиль, который не куплен, надеть нельзя: защищаемся от вызовов в обход витрины.
+    if (partial.cardBack && !isCosmeticOwned(state.owned, partial.cardBack)) {
+      get().showToast('Этот стиль рубашки ещё не куплен.');
+      return;
+    }
+    if (partial.tableTheme && !isCosmeticOwned(state.owned, partial.tableTheme)) {
+      get().showToast('Этот стиль стола ещё не куплен.');
+      return;
+    }
+    const settings = { ...state.settings, ...partial };
     set({ settings });
     sound.setEnabled(settings.sounds);
     if (partial.sounds) sound.play('click');
     queueSave(get);
+  },
+
+  buyCosmetic(id) {
+    const state = get();
+    const price = cosmeticPrice(id);
+    if (price <= 0) return;
+    if (state.owned.includes(id)) {
+      get().equipCosmetic(id);
+      return;
+    }
+    if (state.coins < price) {
+      get().showToast(`Не хватает ${price - state.coins} монет. Монеты пополняются покупкой.`);
+      return;
+    }
+    set({ coins: state.coins - price, owned: [...state.owned, id] });
+    get().equipCosmetic(id);
+    sound.play('select');
+    queueSave(get);
+  },
+
+  equipCosmetic(id) {
+    const state = get();
+    if (!isCosmeticOwned(state.owned, id)) {
+      get().showToast('Этот стиль ещё не куплен.');
+      return;
+    }
+    const settings = { ...state.settings };
+    if (CARD_BACKS.some((item) => item.id === id)) settings.cardBack = id as Settings['cardBack'];
+    else if (TABLE_THEMES.some((item) => item.id === id)) {
+      settings.tableTheme = id as Settings['tableTheme'];
+    } else {
+      return;
+    }
+    set({ settings });
+    sound.play('click');
+    queueSave(get);
+  },
+
+  async purchaseCoins(packId) {
+    if (!iap.available) {
+      get().showToast('Покупки доступны в Яндекс Играх.');
+      return;
+    }
+    const state = get();
+    if (state.busy) return;
+    set({ busy: true });
+    const result = await iap.purchase(packId);
+    set({ busy: false });
+    if (result.status === 'cancelled') {
+      get().showToast(result.message ?? 'Покупка отменена.');
+      return;
+    }
+    if (result.status === 'unavailable' || result.status === 'failed' || !result.token) {
+      get().showToast(result.message ?? 'Не удалось завершить покупку.');
+      return;
+    }
+    await grantPurchase(result.token, result.productId ?? packId, result.coins ?? 0, set, get);
+  },
+
+  async claimRewardedHints() {
+    const state = get();
+    if (!platform.available) {
+      get().showToast('Видео с наградой доступно в Яндекс Играх.');
+      return;
+    }
+    if (state.busy) return;
+    if (!canClaimRewarded(state.ads)) {
+      get().showToast(`Следующая награда за видео через ${rewardedCooldownLeft(state.ads)} с.`);
+      return;
+    }
+    set({ busy: true });
+    const rewarded = await platform.showRewarded();
+    set({ busy: false });
+    if (!rewarded) {
+      get().showToast('Видео не было просмотрено до конца.');
+      return;
+    }
+    set({
+      hints: get().hints + REWARDED_HINTS,
+      ads: { ...get().ads, rewardedAt: Date.now() },
+    });
+    get().showToast(`+${REWARDED_HINTS} ${hintsWord(REWARDED_HINTS)} за просмотр видео.`);
+    sound.play('select');
+    queueSave(get);
+  },
+
+  async syncPurchases() {
+    if (!iap.available) return;
+    const pending = await iap.pendingPurchases();
+    for (const item of pending) {
+      const pack = COIN_PACKS.find((p) => p.id === item.productId);
+      if (!pack) continue;
+      await grantPurchase(item.token, item.productId, pack.coins, (partial) => set(partial), get);
+    }
   },
 
   async resetProgress() {
@@ -705,6 +949,10 @@ export const useGameStore = create<AppState>((set, get) => ({
       sessions: {},
       settings: fresh.settings,
       coins: 0,
+      owned: fresh.owned,
+      hints: fresh.hints,
+      processedPurchases: fresh.processedPurchases,
+      ads: fresh.ads,
       session: null,
       gameState: null,
       selection: null,

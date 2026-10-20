@@ -1,3 +1,5 @@
+import { iap } from './iap';
+
 /**
  * Тонкая обёртка над Yandex Games SDK.
  * Вне платформы все методы безопасно работают как офлайн-заглушки,
@@ -84,6 +86,8 @@ class PlatformService {
       ]);
       if (!sdk) return;
       this.sdk = sdk;
+      // Покупки работают через тот же SDK, второй YaGames.init() не нужен.
+      iap.bindSdk(() => this.sdk);
       try {
         this.sdk.features?.LoadingAPI?.ready?.();
       } catch {

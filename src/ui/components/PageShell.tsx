@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from './Icon';
-import { Brand, CoinChip } from './Brand';
+import { Brand, CoinChip, HintChip } from './Brand';
 import { useGameStore } from '../../store/gameStore';
 
 interface PageShellProps {
@@ -14,6 +14,7 @@ interface PageShellProps {
 export function PageShell({ title, subtitle, children, actions, eyebrow }: PageShellProps) {
   const openScreen = useGameStore((s) => s.openScreen);
   const coins = useGameStore((s) => s.coins);
+  const hints = useGameStore((s) => s.hints);
   return (
     <div className="page-shell">
       <header className="page-top">
@@ -24,6 +25,7 @@ export function PageShell({ title, subtitle, children, actions, eyebrow }: PageS
         <Brand compact />
         <div className="page-top-actions">
           {actions}
+          <HintChip hints={hints} />
           <CoinChip coins={coins} />
         </div>
       </header>

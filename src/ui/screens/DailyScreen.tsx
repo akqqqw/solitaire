@@ -12,7 +12,7 @@ import {
   loginRewardDay,
   type ChallengeDef,
 } from '../../services/dailyChallenges';
-import { formatCoins, pluralize } from '../utils';
+import { pluralize } from '../utils';
 
 function timeToMidnight(now = new Date()): string {
   const next = new Date(now);
@@ -26,7 +26,7 @@ function timeToMidnight(now = new Date()): string {
 export function DailyScreen() {
   const daily = useGameStore((s) => s.daily);
   const login = useGameStore((s) => s.login);
-  const coins = useGameStore((s) => s.coins);
+  const hints = useGameStore((s) => s.hints);
   const claimChallenge = useGameStore((s) => s.claimDailyChallenge);
   const claimLogin = useGameStore((s) => s.claimDailyLogin);
   const refreshDate = useGameStore((s) => s.refreshDate);
@@ -86,7 +86,7 @@ export function DailyScreen() {
           >
             <Icon name="calendar" size={18} />
             {loginClaimable
-              ? `Забрать ${LOGIN_REWARDS[dayNumber - 1]} монет`
+              ? `Забрать ${LOGIN_REWARDS[dayNumber - 1]} ${pluralize(LOGIN_REWARDS[dayNumber - 1], 'подсказку', 'подсказки', 'подсказок')}`
               : 'Награда получена'}
           </button>
         </div>
@@ -105,7 +105,7 @@ export function DailyScreen() {
               >
                 <span className="login-day-num">День {day}</span>
                 <span className="login-day-coin">
-                  <Icon name="coin" size={20} />
+                  <Icon name="hint" size={20} />
                   {reward}
                 </span>
                 {isClaimed || isPast ? <span className="login-day-check">✓</span> : null}
@@ -116,11 +116,11 @@ export function DailyScreen() {
         <div className="login-foot">
           <span className="muted">
             {login.lastClaimDate === dateKey()
-              ? 'Сегодняшняя награда уже в кошельке.'
+              ? 'Сегодняшние подсказки уже в запасе.'
               : 'Заходите каждый день, чтобы не потерять серию.'}
           </span>
-          <span className="coin-inline">
-            <Icon name="coin" size={16} /> {formatCoins(coins)}
+          <span className="coin-inline" title="Запас подсказок">
+            <Icon name="hint" size={16} /> {hints}
           </span>
         </div>
       </section>
@@ -128,7 +128,7 @@ export function DailyScreen() {
       <section className="daily-challenges">
         <div className="section-head compact">
           <div>
-            <span className="eyebrow">Три задания на сегодня</span>
+            <span className="eyebrow">Три задания на сегодня · награда — подсказки</span>
             <h2>Испытания</h2>
           </div>
           <span className="pill">
@@ -154,7 +154,7 @@ export function DailyScreen() {
                   <div className="challenge-title-row">
                     <h3>{def.title}</h3>
                     <span className="challenge-reward">
-                      <Icon name="coin" size={15} /> +{def.reward}
+                      <Icon name="hint" size={15} /> +{def.hintReward}
                     </span>
                   </div>
                   <p>{def.description}</p>
@@ -185,7 +185,8 @@ export function DailyScreen() {
           <strong>Задания одинаковы для всех партий этого дня</strong>
           <p className="muted">
             Набор испытаний детерминированно зависит от даты, поэтому перезапуск игры не меняет
-            задания. Прогресс сбрасывается в полночь по местному времени.
+            задания. Прогресс сбрасывается в полночь по местному времени. Задания приносят
+            подсказки, а монеты пополняются только покупкой в магазине.
           </p>
         </div>
         <div className="daily-tips">
