@@ -547,7 +547,11 @@ export class BoardScene extends Phaser.Scene {
   private drawHighlights(view: BoardView): void {
     this.fxLayer.clear();
     const slotById = new Map(view.slots.map((s) => [s.id, s]));
-    const slotsToGlow = new Set([...view.hintSlotIds, ...this.dragAllowed]);
+    // Подсветка целей: яркая при перетаскивании и мягкая после выбора
+    // карты нажатием, чтобы tap-to-select работал так же наглядно.
+    const softTargets = new Set(
+      this.dragAllowed.size === 0 ? view.dropSlotIds : [],
+    );
     if (this.dragAllowed.size > 0) {
       for (const id of this.dragAllowed) {
         const slot = slotById.get(id);
@@ -558,6 +562,16 @@ export class BoardScene extends Phaser.Scene {
         this.fxLayer.lineStyle(2.5, 0x9ae6a8, 0.9);
         this.fxLayer.strokeRoundedRect(slot.x, slot.y, slot.width, slot.height, r);
       }
+    }
+    for (const id of softTargets) {
+      if (view.hintSlotIds.includes(id)) continue;
+      const slot = slotById.get(id);
+      if (!slot) continue;
+      const r = this.slotRadius(slot);
+      this.fxLayer.fillStyle(0x8fdc9e, 0.07);
+      this.fxLayer.fillRoundedRect(slot.x, slot.y, slot.width, slot.height, r);
+      this.fxLayer.lineStyle(1.6, 0x9ae6a8, 0.45);
+      this.fxLayer.strokeRoundedRect(slot.x, slot.y, slot.width, slot.height, r);
     }
     for (const id of view.hintSlotIds) {
       if (this.dragAllowed.has(id)) continue;
@@ -581,7 +595,6 @@ export class BoardScene extends Phaser.Scene {
     };
     for (const id of view.selectedIds) outline(id, 0x9ae6a8, 0.9);
     for (const id of view.hintIds) outline(id, 0xf0d48c, 0.95);
-    void slotsToGlow;
   }
 
   private handleCardPointerDown(cardId: string, pointer: Phaser.Input.Pointer): void {

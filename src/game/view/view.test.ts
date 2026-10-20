@@ -3,6 +3,7 @@ import { GAME_IDS, type GameId } from '../../core/games/types';
 import { GAME_MODULES } from '../../core/games/registry';
 import { presentBoard } from './index';
 import { pyramidFixture } from '../../tests/helpers';
+import { getBoardAdapter } from '../adapters/interactions';
 import type { PyramidState } from '../../core/games/pyramid/Pyramid';
 
 const SIZES = [
@@ -115,4 +116,44 @@ describe('presentPyramid — открытые карты и цели перет�
     expect(view.hintIds).toEqual([top.id]);
     expect(view.hintSlotIds).toEqual(['pyramid-6-0', 'pyramid-waste']);
   });
+});
+
+describe('Цели перетаскивания совпадают со слотами раскладки', () => {
+  const options = {
+    width: 390,
+    height: 700,
+    selected: null,
+    hint: null,
+    hintSlotIds: [],
+    dropSlotIds: [],
+    cardBack: 'emerald' as const,
+    animations: false,
+  };
+
+  for (const gameId of GAME_IDS) {
+    it(`${gameId}: каждый dropSlot существует в раскладке`, () => {
+      const module = GAME_MODULES[gameId];
+      const adapter = getBoardAdapter(gameId);
+      let checked = 0;
+      for (let index = 0; index < 10; index += 1) {
+        let state = module.createGame({ seed: `${gameId}-targets-${index}` });
+        for (let step = 0; step < 6; step += 1) {
+          const moves = module.legalMoves(state);
+          if (!moves.length) break;
+          state = module.applyMove(state, moves[step % moves.length]);
+        }
+        const view = presentBoard(gameId, state, options);
+        const slotIds = new Set(view.slots.map((slot) => slot.id));
+        for (const card of view.cards) {
+          const selection = adapter.selectCards(state, card.id);
+          if (!selection) continue;
+          for (const slot of adapter.dropSlots(state, selection)) {
+            expect(slotIds.has(slot)).toBe(true);
+            checked += 1;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(0);
+    });
+  }
 });

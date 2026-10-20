@@ -3,6 +3,7 @@ import { useGameStore } from './gameStore';
 import { GameSession } from '../core/session/GameSession';
 import { pyramidModule } from '../core/games/pyramid/Pyramid';
 import { pyramidFixture } from '../tests/helpers';
+import { getBoardAdapter } from '../game/adapters/interactions';
 import {
   createDailyState,
   dateKey,
@@ -83,6 +84,27 @@ describe('Связка состояния с результатами парти
     expect(state.login.lastClaimDate).toBe(dateKey());
     useGameStore.getState().claimDailyLogin();
     expect(useGameStore.getState().coins).toBe(35);
+  });
+
+  it('выбор карты нажатием даёт легальные цели для подсветки', () => {
+    const state = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, ['6h', '7s', '2c', '3c', '4c', '5c', '2h']],
+    });
+    const session = new GameSession(pyramidModule, state, { startTimer: false });
+    useGameStore.setState({ session, gameState: state, screen: 'game' });
+    useGameStore.getState().handleCardClick('hearts-6-0');
+
+    const selection = useGameStore.getState().selection;
+    expect(selection?.cards).toEqual(['hearts-6-0']);
+    const slots = getBoardAdapter('pyramid').dropSlots(
+      useGameStore.getState().gameState,
+      selection,
+    );
+    expect(slots).toContain('pyramid-6-1');
+
+    // Повторный клик по выбранной карте снимает выбор.
+    useGameStore.getState().handleCardClick('hearts-6-0');
+    expect(useGameStore.getState().selection).toBeNull();
   });
 
   it('начисляет победу, достижения и ежедневный прогресс ровно один раз', () => {
