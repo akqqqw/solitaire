@@ -1,6 +1,14 @@
 /* Пасьянс Клуб — минимальный офлайн-кэш. Не мешает обновлениям: сеть в приоритете. */
-const CACHE = 'solitaire-club-v1';
-const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon.svg'];
+const CACHE = 'solitaire-club-v2';
+const CORE = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

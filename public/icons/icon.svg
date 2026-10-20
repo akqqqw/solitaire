@@ -24,8 +24,10 @@
     <rect x="228" y="118" width="176" height="252" rx="22" fill="#0d3023" stroke="url(#gold)" stroke-width="5"/>
     <rect x="242" y="132" width="148" height="224" rx="14" fill="none" stroke="#d6b86d" stroke-opacity=".35" stroke-width="2.5"/>
     <path d="M316 184c26 0 40 18 40 36 0 26-34 40-40 66-6-26-40-40-40-66 0-18 14-36 40-36z" fill="url(#gold)"/>
-    <path d="M316 286v34" stroke="url(#gold)" stroke-width="12" stroke-linecap="round"/>
-    <path d="M290 320h52" stroke="url(#gold)" stroke-width="12" stroke-linecap="round"/>
+    <!-- Ручка и основание — сплошной цвет: градиент на вертикальной линии
+         с нулевой шириной рамки вырождается и рисуется чёрным. -->
+    <path d="M316 286v34" stroke="#dcbe78" stroke-width="12" stroke-linecap="round"/>
+    <path d="M290 320h52" stroke="#c8a85a" stroke-width="12" stroke-linecap="round"/>
   </g>
   <circle cx="416" cy="120" r="34" fill="url(#gold)" stroke="#7d6532" stroke-width="4"/>
   <path d="M416 102l5.4 10.9 12 1.8-8.7 8.5 2 12-10.7-5.6-10.7 5.6 2-12-8.7-8.5 12-1.8z" fill="#4a3813"/>
