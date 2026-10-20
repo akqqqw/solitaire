@@ -41,6 +41,11 @@ class CardSprite extends Phaser.GameObjects.Container {
   readonly card: Card;
   faceUp: boolean;
   interactiveCard: boolean;
+  /** Твины держим раздельно: движение не должно убивать переворот и наоборот. */
+  dealTween: Phaser.Tweens.Tween | null = null;
+  moveTween: Phaser.Tweens.Tween | null = null;
+  flipTween: Phaser.Tweens.Tween | null = null;
+  flipTarget: boolean;
   private onDown: (pointer: Phaser.Input.Pointer) => void;
 
   constructor(
@@ -59,6 +64,7 @@ class CardSprite extends Phaser.GameObjects.Container {
       copy: 0,
     };
     this.faceUp = data.faceUp;
+    this.flipTarget = data.faceUp;
     this.interactiveCard = data.interactive;
     this.back = back;
     this.cw = data.width;
@@ -80,6 +86,32 @@ class CardSprite extends Phaser.GameObjects.Container {
   redraw(back: CardBackId): void {
     this.back = back;
     this.draw();
+  }
+
+  /** Завершает анимацию раздачи, чтобы карта не осталась прозрачной. */
+  stopDeal(): void {
+    if (this.dealTween) {
+      this.dealTween.stop();
+      this.dealTween = null;
+      this.setAlpha(1);
+    }
+    if (!this.flipTween) this.setScale(1, 1);
+  }
+
+  stopMove(): void {
+    if (this.moveTween) {
+      this.moveTween.stop();
+      this.moveTween = null;
+    }
+  }
+
+  stopFlip(): void {
+    if (this.flipTween) {
+      this.flipTween.stop();
+      this.flipTween = null;
+    }
+    if (this.faceUp !== this.flipTarget) this.setFace(this.flipTarget);
+    this.setScale(1, 1);
   }
 
   setCardInteractive(enabled: boolean): void {
@@ -357,7 +389,9 @@ export class BoardScene extends Phaser.Scene {
       if (seen.has(id)) continue;
       this.sprites.delete(id);
       if (view.animations) {
-        this.soundStop(sprite);
+        sprite.stopFlip();
+        sprite.stopDeal();
+        sprite.stopMove();
         this.tweens.add({
           targets: sprite,
           alpha: 0,
@@ -377,7 +411,7 @@ export class BoardScene extends Phaser.Scene {
       dealOrder.forEach((data, index) => {
         const sprite = this.sprites.get(data.id);
         if (!sprite) return;
-        this.tweens.add({
+        sprite.dealTween = this.tweens.add({
           targets: sprite,
           x: data.x,
           y: data.y,
@@ -387,16 +421,15 @@ export class BoardScene extends Phaser.Scene {
           duration: 220,
           delay: Math.min(700, index * 9),
           ease: 'Quad.Out',
+          onComplete: () => {
+            sprite.dealTween = null;
+          },
         });
       });
     }
 
     this.buildSlots(view);
     this.drawHighlights(view);
-  }
-
-  private soundStop(sprite: CardSprite): void {
-    this.tweens.killTweensOf(sprite);
   }
 
   private createSprite(data: ViewCard, view: BoardView, animateDeal: boolean): CardSprite {
@@ -419,13 +452,16 @@ export class BoardScene extends Phaser.Scene {
   private moveSprite(sprite: CardSprite, data: ViewCard, animate: boolean): void {
     const x = data.x;
     const y = data.y;
+    // Раздача завершается сразу: иначе при быстром клике карта может
+    // остаться с нулевой прозрачностью и выглядеть отсутствующей.
+    sprite.stopDeal();
     if (Math.abs(sprite.x - x) < 0.4 && Math.abs(sprite.y - y) < 0.4) return;
+    sprite.stopMove();
     if (!animate) {
       sprite.setPosition(x, y);
       return;
     }
-    this.tweens.killTweensOf(sprite);
-    this.tweens.add({
+    sprite.moveTween = this.tweens.add({
       targets: sprite,
       x,
       y,
@@ -435,28 +471,44 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private flip(sprite: CardSprite, faceUp: boolean): void {
-    if (sprite.getData('flipping')) return;
-    sprite.setData('flipping', true);
-    this.tweens.add({
-      targets: sprite,
-      scaleX: 0,
-      duration: 80,
-      ease: 'Quad.In',
+    if (!sprite.active) return;
+    sprite.flipTarget = faceUp;
+    // Переворот уже идёт: просто запоминаем новую цель.
+    if (sprite.flipTween) return;
+    sprite.stopDeal();
+    // Анимируем отдельный счётчик, а не сам контейнер: иначе твин движения
+    // или удаления карты (`killTweensOf`) обрывал переворот на середине,
+    // и карта навсегда оставалась рубашкой.
+    const counter = { v: 0 };
+    sprite.flipTween = this.tweens.add({
+      targets: counter,
+      v: 1,
+      duration: 180,
+      ease: 'Sine.InOut',
+      onUpdate: () => {
+        if (!sprite.active) return;
+        const v = counter.v;
+        if (v < 0.5) {
+          sprite.setScale(Math.max(0.01, 1 - v * 2), 1);
+        } else {
+          if (sprite.faceUp !== sprite.flipTarget) sprite.setFace(sprite.flipTarget);
+          sprite.setScale(Math.max(0.01, (v - 0.5) * 2), 1);
+        }
+      },
       onComplete: () => {
-        sprite.setFace(faceUp);
-        this.tweens.add({
-          targets: sprite,
-          scaleX: 1,
-          duration: 100,
-          ease: 'Quad.Out',
-          onComplete: () => sprite.setData('flipping', false),
-        });
+        sprite.flipTween = null;
+        if (!sprite.active) return;
+        if (sprite.faceUp !== sprite.flipTarget) sprite.setFace(sprite.flipTarget);
+        sprite.setScale(1, 1);
       },
     });
   }
 
   private destroyAllSprites(): void {
     for (const sprite of this.sprites.values()) {
+      sprite.stopFlip();
+      sprite.stopDeal();
+      sprite.stopMove();
       this.tweens.killTweensOf(sprite);
       sprite.destroy();
     }
@@ -679,10 +731,16 @@ export class BoardScene extends Phaser.Scene {
       const sprite = this.sprites.get(id);
       const data = this.cardData.get(id);
       if (!sprite || !data) continue;
+      sprite.stopMove();
       if (!this.currentView?.animations) sprite.setPosition(data.x, data.y);
       else {
-        this.tweens.killTweensOf(sprite);
-        this.tweens.add({ targets: sprite, x: data.x, y: data.y, duration: 150, ease: 'Cubic.Out' });
+        sprite.moveTween = this.tweens.add({
+          targets: sprite,
+          x: data.x,
+          y: data.y,
+          duration: 150,
+          ease: 'Cubic.Out',
+        });
       }
     }
   }
