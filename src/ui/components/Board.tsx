@@ -96,6 +96,7 @@ export function Board() {
       onDrop: (cards, slotId) => useGameStore.getState().handleDrop(cards, slotId),
     };
     const manager = new BoardGameManager(canvas, controller);
+    manager.setTargetHints(useGameStore.getState().settings.targetHints);
     managerRef.current = manager;
     if (latestView.current) manager.render(latestView.current);
     return () => {
@@ -103,6 +104,10 @@ export function Board() {
       managerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    managerRef.current?.setTargetHints(settings.targetHints);
+  }, [settings.targetHints]);
 
   useLayoutEffect(() => {
     latestView.current = view;

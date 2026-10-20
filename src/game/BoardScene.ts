@@ -49,6 +49,8 @@ export class BoardScene extends Phaser.Scene {
   private lastClick: { id: string; time: number } | null = null;
   private suppressSlotUntil = 0;
   private dragAllowed = new Set<string>();
+  /** Показывать ли подсветку мест, куда можно положить взятую карту. */
+  private targetHints = false;
 
   constructor(controller: BoardController) {
     super({ key: 'BoardScene' });
@@ -66,6 +68,13 @@ export class BoardScene extends Phaser.Scene {
     this.input.on('pointerup', this.handlePointerUp, this);
     this.input.on('pointerupoutside', this.handlePointerUp, this);
     if (this.pendingView) this.render(this.pendingView);
+  }
+
+  /** Включает или выключает подсветку целей (настройка игрока). */
+  setTargetHints(enabled: boolean): void {
+    if (this.targetHints === enabled) return;
+    this.targetHints = enabled;
+    if (this.currentView) this.drawHighlights(this.currentView);
   }
 
   /** Позиции перетаскиваемых карт обновляем один раз за кадр. */
@@ -402,8 +411,12 @@ export class BoardScene extends Phaser.Scene {
     const slotById = new Map(view.slots.map((s) => [s.id, s]));
     // Подсветка целей: яркая при перетаскивании и мягкая после выбора
     // карты нажатием, чтобы tap-to-select работал так же наглядно.
-    const softTargets = new Set(this.dragAllowed.size === 0 ? view.dropSlotIds : []);
-    if (this.dragAllowed.size > 0) {
+    // Подсветку допустимых мест игрок может отключить: тогда остаются только
+    // явные подсказки по кнопке «Подсказка».
+    const softTargets = new Set(
+      this.targetHints && this.dragAllowed.size === 0 ? view.dropSlotIds : [],
+    );
+    if (this.targetHints && this.dragAllowed.size > 0) {
       for (const id of this.dragAllowed) {
         const slot = slotById.get(id);
         if (!slot) continue;

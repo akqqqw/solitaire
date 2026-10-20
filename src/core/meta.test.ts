@@ -306,6 +306,8 @@ describe('Профиль и сохранения', () => {
     expect(clean.settings.cardBack).toBe('emerald');
     expect(clean.settings.sounds).toBe(false);
     expect(clean.settings.animations).toBe(true);
+    // Новая настройка без значения в старом профиле получает безопасный дефолт.
+    expect(clean.settings.targetHints).toBe(false);
     expect(clean.sessions).toEqual({});
     expect(profileUpdatedAt(clean)).toBe(1234);
   });

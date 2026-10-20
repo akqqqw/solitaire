@@ -330,3 +330,91 @@ describe('BoardScene: карты рисуются атласом', () => {
     game.destroy(true);
   }, 30000);
 });
+
+describe('BoardScene: подсветка допустимых мест отключается настройкой', () => {
+  /**
+   * Следит за цветами заливки слоя подсветки. Считать команды Graphics нельзя:
+   * один скруглённый прямоугольник разворачивается в десяток команд пути.
+   */
+  function watchHighlights(scene: BoardScene): { cells: () => number; gold: () => number; reset: () => void } {
+    const layer = (scene as unknown as { fxLayer: Phaser.GameObjects.Graphics }).fxLayer;
+    const original = layer.fillStyle.bind(layer);
+    let cells = 0;
+    let gold = 0;
+    layer.fillStyle = ((color: number, alpha?: number) => {
+      // 0x8fdc9e — мягкая/яркая подсветка целей, GOLD — явная подсказка.
+      if (color === 0x8fdc9e) cells += 1;
+      if (color === 0xc8a85a) gold += 1;
+      return original(color, alpha as number);
+    }) as typeof layer.fillStyle;
+    return {
+      cells: () => cells,
+      gold: () => gold,
+      reset: () => {
+        cells = 0;
+        gold = 0;
+      },
+    };
+  }
+
+  it('по умолчанию не рисует зелёные цели ни после выбора, ни после взятия карты', async () => {
+    const { scene, game } = bootScene();
+    const watch = watchHighlights(scene);
+    const state = createKlondikeGame({ seed: 'hints-off', drawCount: 1 });
+    const base = view('klondike', state);
+    const card = base.cards.find((item) => item.faceUp);
+    expect(card).toBeTruthy();
+
+    // Даже если раскладка предлагает цели, сцена их игнорирует.
+    scene.render({
+      ...base,
+      selectedIds: [card!.id],
+      dropSlotIds: base.slots.map((slot) => slot.id),
+    });
+    await wait(60);
+    expect(watch.cells()).toBe(0);
+    game.destroy(true);
+  }, 20000);
+
+  it('после включения настройки цели снова подсвечиваются', async () => {
+    const { scene, game } = bootScene();
+    const watch = watchHighlights(scene);
+    const state = createKlondikeGame({ seed: 'hints-on', drawCount: 1 });
+    const base = view('klondike', state);
+    const card = base.cards.find((item) => item.faceUp);
+
+    scene.setTargetHints(true);
+    scene.render({
+      ...base,
+      selectedIds: card ? [card.id] : [],
+      dropSlotIds: ['foundation-0', 'tableau-1'],
+    });
+    await wait(60);
+    expect(watch.cells()).toBeGreaterThan(0);
+
+    watch.reset();
+    scene.setTargetHints(false);
+    expect(watch.cells()).toBe(0);
+    game.destroy(true);
+  }, 20000);
+
+  it('явная подсказка по кнопке рисуется даже с выключенной подсветкой целей', async () => {
+    const { scene, game } = bootScene();
+    const watch = watchHighlights(scene);
+    const state = createKlondikeGame({ seed: 'hints-explicit', drawCount: 1 });
+    const base = view('klondike', state);
+    const card = base.cards.find((item) => item.faceUp);
+    scene.render({
+      ...base,
+      selectedIds: [],
+      hintIds: card ? [card.id] : [],
+      hintSlotIds: ['stock'],
+      dropSlotIds: ['tableau-0'],
+    });
+    await wait(60);
+    // Подсказка — это заказ игрока, она не зависит от настройки подсветки.
+    expect(watch.gold()).toBeGreaterThan(0);
+    expect(watch.cells()).toBe(0);
+    game.destroy(true);
+  }, 20000);
+});

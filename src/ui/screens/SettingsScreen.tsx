@@ -128,7 +128,13 @@ export function SettingsScreen() {
           checked={settings.sounds}
           onChange={(sounds) => updateSettings({ sounds })}
           label="Звуки"
-          description="Тихие синтезированные эффекты ходов и победы без внешних файлов."
+          description="Мягкие синтезированные эффекты: шорох карт по сукну, тихие ходы и победа."
+        />
+        <Toggle
+          checked={settings.targetHints}
+          onChange={(targetHints) => updateSettings({ targetHints })}
+          label="Подсветка мест"
+          description="Показывать зелёным, куда можно положить взятую карту. Выключено — стол остаётся спокойным, а подсказка по кнопке работает как раньше."
         />
       </section>
 

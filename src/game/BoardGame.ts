@@ -70,6 +70,10 @@ export class BoardGameManager {
     this.scene.render(view);
   }
 
+  setTargetHints(enabled: boolean): void {
+    this.scene.setTargetHints(enabled);
+  }
+
   resize(width: number, height: number): void {
     if (!Number.isFinite(width) || !Number.isFinite(height)) return;
     const w = Math.max(200, Math.round(width));

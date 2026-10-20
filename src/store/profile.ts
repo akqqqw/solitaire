@@ -29,6 +29,8 @@ export interface Settings {
   tableTheme: TableThemeId;
   animations: boolean;
   sounds: boolean;
+  /** Подсвечивать места, куда можно положить взятую карту. По умолчанию выключено. */
+  targetHints: boolean;
 }
 
 export const CARD_BACKS: { id: CardBackId; label: string; accent: string; deep: string }[] = [
@@ -45,7 +47,13 @@ export const TABLE_THEMES: { id: TableThemeId; label: string }[] = [
 ];
 
 export function defaultSettings(): Settings {
-  return { cardBack: 'emerald', tableTheme: 'emerald', animations: true, sounds: true };
+  return {
+    cardBack: 'emerald',
+    tableTheme: 'emerald',
+    animations: true,
+    sounds: true,
+    targetHints: false,
+  };
 }
 
 export interface ProfileData {
@@ -87,6 +95,7 @@ function sanitizeSettings(raw: unknown): Settings {
       : fallback.tableTheme,
     animations: typeof v.animations === 'boolean' ? v.animations : fallback.animations,
     sounds: typeof v.sounds === 'boolean' ? v.sounds : fallback.sounds,
+    targetHints: typeof v.targetHints === 'boolean' ? v.targetHints : fallback.targetHints,
   };
 }
 

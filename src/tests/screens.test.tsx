@@ -101,6 +101,16 @@ describe('Экраны: каждая кнопка делает то, что об
     fireEvent.click(screen.getByRole('switch', { name: 'Звуки' }));
     expect(useGameStore.getState().settings.sounds).toBe(sounds);
 
+    // Подсветка мест по умолчанию выключена и включается переключателем.
+    expect(useGameStore.getState().settings.targetHints).toBe(false);
+    const hintsSwitch = screen.getByRole('switch', { name: 'Подсветка мест' });
+    expect(hintsSwitch.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(hintsSwitch);
+    expect(useGameStore.getState().settings.targetHints).toBe(true);
+    expect(hintsSwitch.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(hintsSwitch);
+    expect(useGameStore.getState().settings.targetHints).toBe(false);
+
     // Возврат в меню действительно возвращает в меню.
     fireEvent.click(screen.getByRole('button', { name: /Меню/ }));
     await waitFor(() => {
