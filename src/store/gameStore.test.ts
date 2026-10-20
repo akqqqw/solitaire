@@ -109,6 +109,27 @@ describe('Связка состояния с результатами парти
     expect(useGameStore.getState().selection).toBeNull();
   });
 
+  it('после победы отмена недоступна и не возвращает партию в игру', async () => {
+    const won = pyramidFixture();
+    won.removed = Array.from({ length: 7 }, (_, row) =>
+      Array.from({ length: row + 1 }, () => true),
+    );
+    won.won = true;
+    won.moves = 40;
+    const previous = pyramidFixture();
+    const session = new GameSession(pyramidModule, won, { startTimer: false });
+    session.undoStack.push(previous);
+    useGameStore.setState({ session, gameState: won, screen: 'game', isWon: true });
+    useGameStore.getState().finalizeWin();
+    expect(useGameStore.getState().stats.pyramid.wins).toBe(1);
+    expect(useGameStore.getState().canUndo).toBe(false);
+
+    await useGameStore.getState().undo();
+    expect(useGameStore.getState().gameState?.won).toBe(true);
+    expect(useGameStore.getState().gameState?.moves).toBe(40);
+    expect(session.undoStack).toHaveLength(1);
+  });
+
   it('завершённая партия не сохраняется как «продолжить»', async () => {
     const won = pyramidFixture();
     won.removed = Array.from({ length: 7 }, (_, row) =>

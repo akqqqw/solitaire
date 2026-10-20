@@ -241,7 +241,8 @@ function statusFields(session: AnyGameSession | null) {
   return {
     session,
     gameState: session?.state ?? null,
-    canUndo: session?.canUndo ?? false,
+    // После победы партия завершена: отмена вернула бы уже учтённый результат.
+    canUndo: session ? !session.state.won && session.canUndo : false,
     isWon: session?.state.won ?? false,
     isStuck: session ? !session.state.won && session.module.isStuck(session.state) : false,
     hintsUsed: session?.hintsUsed ?? 0,
@@ -567,7 +568,7 @@ export const useGameStore = create<AppState>((set, get) => ({
 
   async undo() {
     const session = get().session;
-    if (!session || !session.canUndo) return;
+    if (!session || !session.canUndo || session.state.won) return;
     session.undo();
     set({ ...statusFields(session), selection: null, hint: null });
     sound.play('undo');
