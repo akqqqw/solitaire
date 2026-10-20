@@ -2451,6 +2451,19 @@ svg {
   touch-action: none;
 }
 
+.fps-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 5;
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: rgba(6, 22, 16, 0.82);
+  color: #efdfb8;
+  font: 600 11px/1.4 "Trebuchet MS", "Segoe UI", sans-serif;
+  pointer-events: none;
+}
+
 .board-loading {
   position: absolute;
   inset: 0;
@@ -2476,7 +2489,8 @@ svg {
   border: 1px solid rgba(214, 184, 109, 0.38);
   background: rgba(8, 28, 20, 0.94);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(10px);
+  /* Без backdrop-filter: панель и так почти непрозрачная, а размытие под ней
+     заставляло браузер пересчитывать область холста каждый кадр. */
   animation: hint-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 

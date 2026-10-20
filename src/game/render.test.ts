@@ -250,3 +250,83 @@ describe('BoardScene: карты показываются правильной �
     expect(problems).toEqual([]);
   }, 30000);
 });
+
+/** Считает объекты сцены по типам: каждый Text — отдельная текстура и вызов отрисовки. */
+function countByType(game: Phaser.Game): Map<string, number> {
+  const counts = new Map<string, number>();
+  const walk = (list: Phaser.GameObjects.GameObject[]) => {
+    for (const child of list) {
+      counts.set(child.type, (counts.get(child.type) ?? 0) + 1);
+      const container = child as unknown as { list?: Phaser.GameObjects.GameObject[] };
+      if (Array.isArray(container.list)) walk(container.list);
+    }
+  };
+  walk((game.scene.getScene('BoardScene') as Phaser.Scene).children.list);
+  return counts;
+}
+
+describe('BoardScene: карты рисуются атласом', () => {
+  it('на каждую карту приходится один объект, а не пачка текстов', async () => {
+    const cases = [
+      ['klondike', createKlondikeGame({ seed: 'draw-budget-k', drawCount: 1 })],
+      ['spider', createSpiderGame({ seed: 'draw-budget-s', suitCount: 4 })],
+      ['freecell', createFreeCellGame({ seed: '123456' })],
+      ['pyramid', createPyramidGame({ seed: 'draw-budget-p' })],
+    ] as const;
+
+    const { scene, game } = bootScene();
+    for (const [id, state] of cases) {
+      const v = view(id, state);
+      scene.render(v);
+      await wait(80);
+      const counts = countByType(game);
+      const images = counts.get('Image') ?? 0;
+      const texts = counts.get('Text') ?? 0;
+      const sprites = (scene as unknown as { sprites: Map<string, unknown> }).sprites;
+      expect(images).toBe(sprites.size);
+      expect(sprites.size).toBe(v.cards.length);
+      // Раньше в «Свободной ячейке» было 312 текстов — по 6 на карту.
+      expect(texts).toBeLessThanOrEqual(12);
+      expect(counts.get('Graphics') ?? 0).toBeLessThanOrEqual(4);
+    }
+    // Один атлас на все карты: 52 лица и 4 рубашки в одной текстуре.
+    const keys = game.textures.getTextureKeys();
+    expect(keys.length).toBeLessThanOrEqual(12);
+    const atlasKey = keys.find((key) => key.startsWith('card-atlas'));
+    expect(atlasKey).toBeTruthy();
+    const atlasCanvas = game.textures.get(atlasKey as string).getSourceImage() as HTMLCanvasElement;
+    // Лимит текстур старых телефонов: атлас обязан в него помещаться.
+    expect(atlasCanvas.width).toBeLessThanOrEqual(2048);
+    expect(atlasCanvas.height).toBeLessThanOrEqual(2048);
+    game.destroy(true);
+  }, 30000);
+
+  it('атлас пересобирается при смене размера карт', async () => {
+    const { scene, game } = bootScene();
+    const state = createKlondikeGame({ seed: 'atlas-resize', drawCount: 1 });
+    scene.render(view('klondike', state));
+    await wait(120);
+    const texturesAfterFirst = game.textures.getTextureKeys().length;
+
+    const small = presentBoard('klondike' as never, state as never, {
+      width: 320,
+      height: 560,
+      selected: null,
+      hint: null,
+      hintSlotIds: [],
+      dropSlotIds: [],
+      cardBack: 'emerald',
+      animations: false,
+    });
+    scene.render(small);
+    await wait(120);
+    const sprites = (scene as unknown as { sprites: Map<string, any> }).sprites;
+    const card = small.cards[0];
+    const image = sprites.get(card.id).list[0] as Phaser.GameObjects.Image;
+    expect(image.frame.width).toBeGreaterThan(0);
+    expect(small.cardWidth).toBeLessThanOrEqual(78);
+    // Старый атлас удаляется, новый занимает его место: утечки текстур нет.
+    expect(game.textures.getTextureKeys().length).toBeLessThanOrEqual(texturesAfterFirst + 1);
+    game.destroy(true);
+  }, 30000);
+});

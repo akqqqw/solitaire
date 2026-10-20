@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { RANK_LABEL, SUIT_SYMBOL, type Card, type Suit } from '../core/cards/Card';
 import type { CardBackId } from '../store/profile';
+import { CardSprite } from './CardSprite';
+import { CardAtlasCache } from './cardAtlas';
 import type { BoardView, ViewCard, ViewSlot } from './view/types';
 
 export interface BoardController {
@@ -12,282 +13,7 @@ export interface BoardController {
   onDrop(cards: string[], slotId: string | null): boolean;
 }
 
-const BACKS: Record<
-  CardBackId,
-  { deep: number; accent: number; line: number }
-> = {
-  emerald: { deep: 0x123c2d, accent: 0xc8a85a, line: 0x1f5a44 },
-  midnight: { deep: 0x1b2742, accent: 0xb9c6dd, line: 0x2c3f63 },
-  burgundy: { deep: 0x4a1d26, accent: 0xe2b177, line: 0x6c2c39 },
-  sapphire: { deep: 0x143453, accent: 0xa9c7e8, line: 0x205074 },
-};
-
-const RED = 0xb12637;
-const BLACK = 0x1d2328;
 const GOLD = 0xc8a85a;
-const CARD_FACE = 0xfaf7ee;
-
-function hexColor(value: number): string {
-  return `#${value.toString(16).padStart(6, '0')}`;
-}
-
-class CardSprite extends Phaser.GameObjects.Container {
-  private gfx: Phaser.GameObjects.Graphics;
-  private dynamic: Phaser.GameObjects.GameObject[] = [];
-  private hitZone: Phaser.GameObjects.Zone | null = null;
-  private cw = 1;
-  private ch = 1;
-  private back: CardBackId;
-  readonly card: Card;
-  faceUp: boolean;
-  interactiveCard: boolean;
-  /** Твины держим раздельно: движение не должно убивать переворот и наоборот. */
-  dealTween: Phaser.Tweens.Tween | null = null;
-  moveTween: Phaser.Tweens.Tween | null = null;
-  flipTween: Phaser.Tweens.Tween | null = null;
-  flipTarget: boolean;
-  private onDown: (pointer: Phaser.Input.Pointer) => void;
-
-  constructor(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    data: ViewCard,
-    back: CardBackId,
-    onDown: (pointer: Phaser.Input.Pointer) => void,
-  ) {
-    super(scene, x, y);
-    this.card = {
-      id: data.id,
-      suit: data.suit,
-      rank: data.rank,
-      copy: 0,
-    };
-    this.faceUp = data.faceUp;
-    this.flipTarget = data.faceUp;
-    this.interactiveCard = data.interactive;
-    this.back = back;
-    this.cw = data.width;
-    this.ch = data.height;
-    this.onDown = onDown;
-    this.gfx = new Phaser.GameObjects.Graphics(scene);
-    this.add(this.gfx);
-    scene.add.existing(this);
-    this.draw();
-    this.createHitArea();
-  }
-
-  setFace(faceUp: boolean): void {
-    if (this.faceUp === faceUp) return;
-    this.faceUp = faceUp;
-    this.draw();
-  }
-
-  redraw(back: CardBackId): void {
-    this.back = back;
-    this.draw();
-  }
-
-  /** Завершает анимацию раздачи, чтобы карта не осталась прозрачной. */
-  stopDeal(): void {
-    if (this.dealTween) {
-      this.dealTween.stop();
-      this.dealTween = null;
-      this.setAlpha(1);
-    }
-    if (!this.flipTween) this.setScale(1, 1);
-  }
-
-  stopMove(): void {
-    if (this.moveTween) {
-      this.moveTween.stop();
-      this.moveTween = null;
-    }
-  }
-
-  stopFlip(): void {
-    if (this.flipTween) {
-      this.flipTween.stop();
-      this.flipTween = null;
-    }
-    if (this.faceUp !== this.flipTarget) this.setFace(this.flipTarget);
-    this.setScale(1, 1);
-  }
-
-  setCardInteractive(enabled: boolean): void {
-    this.interactiveCard = enabled;
-    if (this.hitZone) {
-      if (enabled) this.hitZone.setInteractive({ useHandCursor: true });
-      else this.hitZone.disableInteractive();
-    }
-  }
-
-  private clearDynamic(): void {
-    for (const child of this.dynamic) child.destroy();
-    this.dynamic = [];
-  }
-
-  private text(
-    x: number,
-    y: number,
-    value: string,
-    size: number,
-    color: number,
-    options: { bold?: boolean; angle?: number; alpha?: number; originX?: number; originY?: number } = {},
-  ): Phaser.GameObjects.Text {
-    const text = new Phaser.GameObjects.Text(this.scene, x, y, value, {
-      fontFamily: '"Georgia", "Times New Roman", serif',
-      fontSize: `${Math.max(6, Math.round(size))}px`,
-      color: hexColor(color),
-      fontStyle: options.bold === false ? 'normal' : 'bold',
-      align: 'center',
-    });
-    text.setOrigin(options.originX ?? 0, options.originY ?? 0);
-    if (options.angle) text.setAngle(options.angle);
-    if (options.alpha !== undefined) text.setAlpha(options.alpha);
-    this.add(text);
-    this.dynamic.push(text);
-    return text;
-  }
-
-  private draw(): void {
-    const w = this.cw;
-    const h = this.ch;
-    const radius = Math.max(3, w * 0.065);
-    this.gfx.clear();
-    this.clearDynamic();
-    this.gfx.fillStyle(0x000000, 0.22);
-    this.gfx.fillRoundedRect(2.5, 4, w, h, radius);
-    if (this.faceUp) this.drawFace(w, h, radius);
-    else this.drawBack(w, h, radius);
-  }
-
-  private drawFace(w: number, h: number, radius: number): void {
-    const suit = this.card.suit;
-    const color = suit === 'hearts' || suit === 'diamonds' ? RED : BLACK;
-    const g = this.gfx;
-    g.fillStyle(CARD_FACE, 1);
-    g.fillRoundedRect(0, 0, w, h, radius);
-    g.lineStyle(1, 0xc9c1af, 0.95);
-    g.strokeRoundedRect(0.5, 0.5, w - 1, h - 1, radius);
-    g.lineStyle(0.8, GOLD, 0.25);
-    g.strokeRoundedRect(w * 0.055, h * 0.04, w * 0.89, h * 0.92, radius * 0.7);
-
-    const rank = RANK_LABEL[this.card.rank];
-    const corner = Math.max(8, w * 0.24);
-    this.text(w * 0.09, h * 0.045, rank, corner, color);
-    this.text(w * 0.09, h * 0.045 + corner * 1.05, SUIT_SYMBOL[suit], corner * 0.9, color);
-    this.text(
-      w * 0.91,
-      h * 0.955,
-      `${rank}\n${SUIT_SYMBOL[suit]}`,
-      corner * 0.72,
-      color,
-      { angle: 180, originX: 1, originY: 1, bold: true },
-    );
-
-    const faceCard = this.card.rank > 10;
-    if (faceCard) {
-      const inset = w * 0.2;
-      g.lineStyle(Math.max(0.8, w * 0.008), GOLD, 0.55);
-      g.strokeRoundedRect(inset, h * 0.22, w - inset * 2, h * 0.56, radius * 0.6);
-      g.lineStyle(Math.max(0.5, w * 0.005), color, 0.18);
-      g.strokeRoundedRect(inset + 2, h * 0.22 + 2, w - inset * 2 - 4, h * 0.56 - 4, radius * 0.5);
-      this.text(w / 2, h * 0.47, rank, w * 0.4, color, {
-        originX: 0.5,
-        originY: 0.5,
-      });
-      this.text(w / 2, h * 0.69, SUIT_SYMBOL[suit], w * 0.2, color, {
-        originX: 0.5,
-        originY: 0.5,
-        alpha: 0.8,
-      });
-      this.text(w / 2, h * 0.3, '◆', w * 0.09, GOLD, {
-        originX: 0.5,
-        originY: 0.5,
-        alpha: 0.85,
-      });
-    } else {
-      this.text(w / 2, h * 0.53, SUIT_SYMBOL[suit], w * 0.55, color, {
-        originX: 0.5,
-        originY: 0.5,
-        alpha: 0.92,
-      });
-      if (this.card.rank !== 1) {
-        this.text(w / 2, h * 0.23, SUIT_SYMBOL[suit], w * 0.14, color, {
-          originX: 0.5,
-          originY: 0.5,
-          alpha: 0.25,
-        });
-        this.text(w / 2, h * 0.82, SUIT_SYMBOL[suit], w * 0.14, color, {
-          originX: 0.5,
-          originY: 0.5,
-          alpha: 0.25,
-        });
-      }
-    }
-  }
-
-  private drawBack(w: number, h: number, radius: number): void {
-    const theme = BACKS[this.back] ?? BACKS.emerald;
-    const g = this.gfx;
-    g.fillStyle(theme.deep, 1);
-    g.fillRoundedRect(0, 0, w, h, radius);
-    g.lineStyle(1, 0x0a1712, 0.55);
-    g.strokeRoundedRect(0.5, 0.5, w - 1, h - 1, radius);
-    g.lineStyle(Math.max(0.8, w * 0.012), theme.accent, 0.8);
-    g.strokeRoundedRect(w * 0.07, h * 0.055, w * 0.86, h * 0.89, radius * 0.7);
-    g.lineStyle(Math.max(0.5, w * 0.006), theme.accent, 0.28);
-    g.strokeRoundedRect(w * 0.1, h * 0.075, w * 0.8, h * 0.85, radius * 0.6);
-
-    const step = Math.max(7, w * 0.16);
-    const insetX = w * 0.17;
-    const insetY = h * 0.16;
-    g.lineStyle(Math.max(0.5, w * 0.007), theme.line, 0.9);
-    for (let y = insetY; y < h - insetY; y += step) {
-      for (let x = insetX; x < w - insetX; x += step) {
-        const s = step * 0.25;
-        g.beginPath();
-        g.moveTo(x, y - s);
-        g.lineTo(x + s, y);
-        g.lineTo(x, y + s);
-        g.lineTo(x - s, y);
-        g.closePath();
-        g.strokePath();
-      }
-    }
-    g.lineStyle(Math.max(1, w * 0.014), theme.accent, 0.8);
-    g.strokeCircle(w / 2, h / 2, w * 0.2);
-    g.lineStyle(Math.max(0.6, w * 0.007), theme.accent, 0.5);
-    g.strokeCircle(w / 2, h / 2, w * 0.16);
-    this.text(w / 2, h / 2, 'SC', w * 0.15, theme.accent, {
-      originX: 0.5,
-      originY: 0.5,
-      bold: true,
-    });
-  }
-
-  private createHitArea(): void {
-    if (this.hitZone) this.hitZone.destroy();
-    const zone = new Phaser.GameObjects.Zone(this.scene, this.cw / 2, this.ch / 2, this.cw, this.ch);
-    this.add(zone);
-    zone.setInteractive({ useHandCursor: true });
-    zone.on(
-      'pointerdown',
-      (
-        pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: Phaser.Types.Input.EventData,
-      ) => {
-        event.stopPropagation();
-        if (this.interactiveCard) this.onDown(pointer);
-      },
-    );
-    this.hitZone = zone;
-    this.setCardInteractive(this.interactiveCard);
-  }
-}
 
 export class BoardScene extends Phaser.Scene {
   private controller: BoardController;
@@ -298,10 +24,13 @@ export class BoardScene extends Phaser.Scene {
   private cardData = new Map<string, ViewCard>();
   private slotZones = new Map<string, Phaser.GameObjects.Zone>();
   private slotLabels: Phaser.GameObjects.GameObject[] = [];
-  private badgeLabels: Phaser.GameObjects.GameObject[] = [];
+  private badgeTexts = new Map<string, Phaser.GameObjects.Text>();
+  private slotSignature = '';
+  private badgeSignature = '';
   private slotLayer!: Phaser.GameObjects.Graphics;
   private badgeLayer!: Phaser.GameObjects.Graphics;
   private fxLayer!: Phaser.GameObjects.Graphics;
+  private atlas: CardAtlasCache | null = null;
   private lastBack: CardBackId = 'emerald';
   private lastDealKey = '';
   private lastCardW = 0;
@@ -315,6 +44,8 @@ export class BoardScene extends Phaser.Scene {
     origins: Map<string, { x: number; y: number }>;
     dragging: boolean;
   } | null = null;
+  /** Последний сдвиг пальца; применяем его раз в кадр, а не на каждый pointermove. */
+  private dragOffset: { x: number; y: number } | null = null;
   private lastClick: { id: string; time: number } | null = null;
   private suppressSlotUntil = 0;
   private dragAllowed = new Set<string>();
@@ -335,6 +66,19 @@ export class BoardScene extends Phaser.Scene {
     this.input.on('pointerup', this.handlePointerUp, this);
     this.input.on('pointerupoutside', this.handlePointerUp, this);
     if (this.pendingView) this.render(this.pendingView);
+  }
+
+  /** Позиции перетаскиваемых карт обновляем один раз за кадр. */
+  update(): void {
+    const offset = this.dragOffset;
+    if (!offset || !this.pressed) return;
+    this.dragOffset = null;
+    const { cards, origins } = this.pressed;
+    for (let i = 0; i < cards.length; i += 1) {
+      const sprite = this.sprites.get(cards[i]);
+      const origin = origins.get(cards[i]);
+      if (sprite && origin) sprite.setPosition(origin.x + offset.x, origin.y + offset.y);
+    }
   }
 
   render(view: BoardView): void {
@@ -362,6 +106,9 @@ export class BoardScene extends Phaser.Scene {
     }
     this.lastBack = view.cardBack;
 
+    if (!this.atlas) this.atlas = new CardAtlasCache(this);
+    const atlas = this.atlas.get(view.cardWidth, view.cardHeight);
+
     this.cardData = new Map(view.cards.map((card) => [card.id, card]));
     const seen = new Set<string>();
     const dealOrder: ViewCard[] = [];
@@ -370,11 +117,11 @@ export class BoardScene extends Phaser.Scene {
       seen.add(data.id);
       let sprite = this.sprites.get(data.id);
       if (!sprite) {
-        sprite = this.createSprite(data, view, dealChanged && view.animations);
+        sprite = this.createSprite(data, view, atlas, dealChanged && view.animations);
         this.sprites.set(data.id, sprite);
         if (dealChanged && view.animations) dealOrder.push(data);
       } else {
-        if (backChanged && !data.faceUp) sprite.redraw(view.cardBack);
+        if (backChanged) sprite.setBack(view.cardBack);
         if (sprite.faceUp !== data.faceUp) {
           if (view.animations) this.flip(sprite, data.faceUp);
           else sprite.setFace(data.faceUp);
@@ -432,12 +179,18 @@ export class BoardScene extends Phaser.Scene {
     this.drawHighlights(view);
   }
 
-  private createSprite(data: ViewCard, view: BoardView, animateDeal: boolean): CardSprite {
+  private createSprite(
+    data: ViewCard,
+    view: BoardView,
+    atlas: ReturnType<CardAtlasCache['get']>,
+    animateDeal: boolean,
+  ): CardSprite {
     const sprite = new CardSprite(
       this,
       data.x,
       data.y,
       data,
+      atlas,
       view.cardBack,
       (pointer) => this.handleCardPointerDown(data.id, pointer),
     );
@@ -515,14 +268,41 @@ export class BoardScene extends Phaser.Scene {
     this.sprites.clear();
   }
 
+  /**
+   * Подложки и зоны пересобираем только когда меняется их геометрия.
+   * Раньше это происходило на каждый render — то есть на каждый ход.
+   */
   private buildSlots(view: BoardView): void {
+    const signature = view.slots
+      .map((slot) =>
+        [
+          slot.id,
+          slot.kind,
+          slot.x,
+          slot.y,
+          slot.width,
+          slot.height,
+          slot.hitHeight ?? '',
+          slot.label ?? '',
+          slot.interactive === false ? 0 : 1,
+        ].join(':'),
+      )
+      .join('|');
+    if (signature !== this.slotSignature) {
+      this.slotSignature = signature;
+      this.rebuildSlotBases(view);
+    }
+    this.updateBadges(view);
+  }
+
+  private rebuildSlotBases(view: BoardView): void {
     for (const zone of this.slotZones.values()) zone.destroy();
     this.slotZones.clear();
-    for (const label of [...this.slotLabels, ...this.badgeLabels]) label.destroy();
+    for (const label of this.slotLabels) label.destroy();
     this.slotLabels = [];
-    this.badgeLabels = [];
     this.slotLayer.clear();
-    this.badgeLayer.clear();
+    // Геометрия изменилась — бейджи нужно пересчитать и перерисовать.
+    this.badgeSignature = '<reset>';
 
     for (const slot of view.slots) {
       this.drawSlotBase(slot);
@@ -538,9 +318,50 @@ export class BoardScene extends Phaser.Scene {
         });
         this.slotZones.set(slot.id, zone);
       }
-      if (slot.badge) {
-        this.drawBadge(slot, slot.badge);
+      if (slot.label) this.drawSlotLabel(slot, slot.label);
+    }
+  }
+
+  private updateBadges(view: BoardView): void {
+    const signature = view.slots.map((slot) => `${slot.id}=${slot.badge ?? ''}`).join('|');
+    if (signature === this.badgeSignature) return;
+    this.badgeSignature = signature;
+    this.badgeLayer.clear();
+
+    const seen = new Set<string>();
+    for (const slot of view.slots) {
+      if (!slot.badge) continue;
+      seen.add(slot.id);
+      const height = Math.max(13, slot.height * 0.2);
+      const width = Math.max(height, slot.badge.length * height * 0.66 + height * 0.5);
+      const x = slot.x + slot.width - width * 0.8;
+      const y = slot.y + slot.height - height * 0.65;
+      this.badgeLayer.fillStyle(0x0a1712, 0.9);
+      this.badgeLayer.fillRoundedRect(x, y, width, height, height / 2);
+      this.badgeLayer.lineStyle(1, GOLD, 0.6);
+      this.badgeLayer.strokeRoundedRect(x, y, width, height, height / 2);
+
+      let text = this.badgeTexts.get(slot.id);
+      if (!text) {
+        text = this.add.text(0, 0, slot.badge, {
+          fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+          fontSize: `${Math.max(8, Math.round(height * 0.62))}px`,
+          color: '#efdfb8',
+          fontStyle: 'bold',
+        });
+        text.setOrigin(0.5);
+        text.setDepth(6001);
+        this.badgeTexts.set(slot.id, text);
       }
+      text.setText(slot.badge);
+      text.setFontSize(Math.max(8, Math.round(height * 0.62)));
+      text.setPosition(x + width / 2, y + height / 2);
+    }
+
+    for (const [id, text] of this.badgeTexts) {
+      if (seen.has(id)) continue;
+      text.destroy();
+      this.badgeTexts.delete(id);
     }
   }
 
@@ -557,43 +378,23 @@ export class BoardScene extends Phaser.Scene {
     const goldish = slot.kind === 'foundation' || slot.kind === 'completed';
     this.slotLayer.lineStyle(1.2, goldish ? GOLD : 0xffffff, goldish ? 0.34 : 0.17);
     this.slotLayer.strokeRoundedRect(slot.x, slot.y, slot.width, slot.height, radius);
-    if (slot.label) {
-      const isSymbol =
-        slot.kind === 'foundation' ||
-        slot.kind === 'completed' ||
-        slot.label.length <= 2;
-      const size = isSymbol ? slot.width * 0.36 : Math.max(7, Math.min(12, slot.width * 0.17));
-      const text = this.add.text(slot.x + slot.width / 2, slot.y + slot.height / 2, slot.label, {
-        fontFamily: '"Georgia", "Times New Roman", serif',
-        fontSize: `${Math.round(size)}px`,
-        color: goldish ? '#d8bd7a' : '#d9d1bd',
-        align: 'center',
-      });
-      text.setOrigin(0.5);
-      text.setAlpha(0.5);
-      text.setDepth(-5);
-      this.slotLabels.push(text);
-    }
   }
 
-  private drawBadge(slot: ViewSlot, badge: string): void {
-    const height = Math.max(13, slot.height * 0.2);
-    const width = Math.max(height, badge.length * height * 0.66 + height * 0.5);
-    const x = slot.x + slot.width - width * 0.8;
-    const y = slot.y + slot.height - height * 0.65;
-    this.badgeLayer.fillStyle(0x0a1712, 0.9);
-    this.badgeLayer.fillRoundedRect(x, y, width, height, height / 2);
-    this.badgeLayer.lineStyle(1, GOLD, 0.6);
-    this.badgeLayer.strokeRoundedRect(x, y, width, height, height / 2);
-    const text = this.add.text(x + width / 2, y + height / 2, badge, {
-      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
-      fontSize: `${Math.max(8, Math.round(height * 0.62))}px`,
-      color: '#efdfb8',
-      fontStyle: 'bold',
+  private drawSlotLabel(slot: ViewSlot, label: string): void {
+    const goldish = slot.kind === 'foundation' || slot.kind === 'completed';
+    const isSymbol =
+      slot.kind === 'foundation' || slot.kind === 'completed' || label.length <= 2;
+    const size = isSymbol ? slot.width * 0.36 : Math.max(7, Math.min(12, slot.width * 0.17));
+    const text = this.add.text(slot.x + slot.width / 2, slot.y + slot.height / 2, label, {
+      fontFamily: '"Georgia", "Times New Roman", serif',
+      fontSize: `${Math.round(size)}px`,
+      color: goldish ? '#d8bd7a' : '#d9d1bd',
+      align: 'center',
     });
     text.setOrigin(0.5);
-    text.setDepth(6001);
-    this.badgeLabels.push(text);
+    text.setAlpha(0.5);
+    text.setDepth(-5);
+    this.slotLabels.push(text);
   }
 
   private drawHighlights(view: BoardView): void {
@@ -601,9 +402,7 @@ export class BoardScene extends Phaser.Scene {
     const slotById = new Map(view.slots.map((s) => [s.id, s]));
     // Подсветка целей: яркая при перетаскивании и мягкая после выбора
     // карты нажатием, чтобы tap-to-select работал так же наглядно.
-    const softTargets = new Set(
-      this.dragAllowed.size === 0 ? view.dropSlotIds : [],
-    );
+    const softTargets = new Set(this.dragAllowed.size === 0 ? view.dropSlotIds : []);
     if (this.dragAllowed.size > 0) {
       for (const id of this.dragAllowed) {
         const slot = slotById.get(id);
@@ -660,6 +459,7 @@ export class BoardScene extends Phaser.Scene {
         if (sprite) origins.set(id, { x: sprite.x, y: sprite.y });
       }
     }
+    this.dragOffset = null;
     this.pressed = {
       cardId,
       pointerId: pointer.id,
@@ -678,20 +478,24 @@ export class BoardScene extends Phaser.Scene {
     if (!this.pressed.dragging) {
       if (this.pressed.cards.length === 0) return;
       if (Math.hypot(dx, dy) < 7) return;
-      this.pressed.dragging = true;
-      this.suppressSlotUntil = performance.now() + 250;
-      this.dragAllowed = new Set(this.controller.getDropSlots(this.pressed.cards));
-      for (const id of this.pressed.cards) {
-        const sprite = this.sprites.get(id);
-        if (sprite) sprite.setDepth(20000 + this.pressed.cards.indexOf(id));
-      }
-      if (this.currentView) this.drawHighlights(this.currentView);
+      this.startDrag();
     }
-    for (const id of this.pressed.cards) {
-      const sprite = this.sprites.get(id);
-      const origin = this.pressed.origins.get(id);
-      if (sprite && origin) sprite.setPosition(origin.x + dx, origin.y + dy);
+    // Только запоминаем позицию: применяем её в update() один раз за кадр.
+    // На мышах с частотой опроса 1000 Гц это убирает 15 лишних пересчётов на кадр.
+    this.dragOffset = { x: dx, y: dy };
+  }
+
+  private startDrag(): void {
+    if (!this.pressed) return;
+    this.pressed.dragging = true;
+    this.suppressSlotUntil = performance.now() + 250;
+    this.dragAllowed = new Set(this.controller.getDropSlots(this.pressed.cards));
+    const cards = this.pressed.cards;
+    for (let i = 0; i < cards.length; i += 1) {
+      const sprite = this.sprites.get(cards[i]);
+      if (sprite) sprite.setDepth(20000 + i);
     }
+    if (this.currentView) this.drawHighlights(this.currentView);
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
@@ -699,6 +503,7 @@ export class BoardScene extends Phaser.Scene {
     if (pointer.id !== this.pressed.pointerId) return;
     const pressed = this.pressed;
     this.pressed = null;
+    this.dragOffset = null;
     this.suppressSlotUntil = performance.now() + 180;
 
     if (pressed.dragging) {
