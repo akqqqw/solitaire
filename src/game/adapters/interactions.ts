@@ -799,15 +799,17 @@ export const pyramidAdapter: BoardAdapter = {
       if (selection) {
         const first = hitPyramid(s, selection.cards[0]);
         const waste = s.waste.at(-1);
-        if (first && waste) {
-          if (waste.card.rank === 13) {
-            const move = pyramidRemove({ zone: 'waste' });
-            return movesResult([move]);
-          }
-          if (first.card.rank + waste.card.rank === 13) {
-            const move = pyramidRemove(first.ref, { zone: 'waste' });
-            if (tryApply({ applyMove: applyPyramidMove }, s, move)) return movesResult([move]);
-          }
+        // Выбор игрока важнее: сначала пробуем составить пару. Король
+        // убирается кликом по сбросу только без выбранной карты, иначе
+        // случайное снятие короля ломало бы задуманный ход.
+        if (first && waste && first.ref.zone === 'waste') {
+          return waste.card.rank === 13
+            ? movesResult([pyramidRemove({ zone: 'waste' })])
+            : { type: 'clear' };
+        }
+        if (first && waste && first.card.rank + waste.card.rank === 13) {
+          const move = pyramidRemove(first.ref, { zone: 'waste' });
+          if (tryApply({ applyMove: applyPyramidMove }, s, move)) return movesResult([move]);
         }
         return { type: 'clear' };
       }

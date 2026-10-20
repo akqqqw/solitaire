@@ -9,7 +9,10 @@ import type { Card } from '../core/cards/Card';
 import type { KlondikeState } from '../core/games/klondike/Klondike';
 import type { SpiderState } from '../core/games/spider/Spider';
 import { createFreeCellGame, type FreeCellState } from '../core/games/freecell/FreeCell';
-import type { PyramidState } from '../core/games/pyramid/Pyramid';
+import { pyramidModule, type PyramidState } from '../core/games/pyramid/Pyramid';
+import { GameSession } from '../core/session/GameSession';
+import { pyramidFixture } from './helpers';
+import { emptyCareer, emptyStatsMap } from '../core/statistics/stats';
 
 vi.mock('../ui/components/Board', () => ({
   Board: () => <div data-testid="board-stub">board</div>,
@@ -408,5 +411,114 @@ describe('Пасьянс Клуб — интерфейс и состояние',
     });
     expect(pyramid().stock).toHaveLength(24);
     expect(pyramid().cycles).toBe(0);
+  });
+
+  it('экран победы: показывает итоги, поле по кнопке и возврат в меню', async () => {
+    const won = pyramidFixture();
+    won.removed = Array.from({ length: 7 }, (_, row) =>
+      Array.from({ length: row + 1 }, () => true),
+    );
+    won.won = true;
+    won.moves = 41;
+    won.score = 380;
+    const session = new GameSession(pyramidModule, won, {
+      elapsedMs: 125_000,
+      hintsUsed: 0,
+      startTimer: false,
+    });
+    act(() => {
+      useGameStore.setState({
+        session,
+        gameState: won,
+        screen: 'game',
+        isWon: true,
+        isStuck: false,
+        canUndo: true,
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Победа!' })).toBeTruthy();
+    });
+    expect(screen.getAllByText(/Пары на сумму 13/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('41').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Посмотреть поле' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Победа!' })).toBeNull();
+    });
+    expect(screen.getByRole('heading', { level: 1, name: 'Пирамида' })).toBeTruthy();
+
+    // Победа уже учтена в статистике, повторного начисления не происходит.
+    act(() => useGameStore.getState().finalizeWin());
+    const wins = useGameStore.getState().stats.pyramid.wins;
+    expect(wins).toBeGreaterThan(0);
+    expect(useGameStore.getState().stats.pyramid.bestTimeMs).toBe(125_000);
+    act(() => useGameStore.getState().finalizeWin());
+    expect(useGameStore.getState().stats.pyramid.wins).toBe(wins);
+  });
+
+  it('тупик: полоса подсказки предлагает отмену и новую игру', async () => {
+    const stuck = pyramidFixture({
+      pyramid: [['3d'], null, null, null, null, null, ['2c', '3c', '4c', '2h', '3h', '4h', '2d']],
+    });
+    stuck.stock = [];
+    stuck.waste = [];
+    const session = new GameSession(pyramidModule, stuck, { startTimer: false });
+    expect(pyramidModule.isStuck(stuck)).toBe(true);
+    act(() => {
+      useGameStore.setState({
+        session,
+        gameState: stuck,
+        screen: 'game',
+        isWon: false,
+        isStuck: true,
+        canUndo: false,
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Ходов больше нет/)).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Новая игра' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Новая партия' })).toBeTruthy();
+    });
+  });
+
+  it('настройки: сброс прогресса очищает статистику и сохранения', async () => {
+    act(() => {
+      useGameStore.getState().openGame('pyramid');
+      useGameStore.getState().handleSlotClick('pyramid-stock');
+      useGameStore.getState().closeGame();
+      useGameStore.setState({
+        stats: { ...emptyStatsMap(), pyramid: { ...emptyStatsMap().pyramid, played: 4, wins: 2 } },
+        career: { ...emptyCareer(), totalPlayed: 4, totalWins: 2 },
+        coins: 120,
+      });
+      useGameStore.getState().openScreen('settings');
+    });
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Настройки' })).toBeTruthy();
+    });
+    expect(useGameStore.getState().career.totalPlayed).toBe(4);
+
+    fireEvent.click(screen.getByRole('button', { name: /Сбросить всё/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Сбросить прогресс?' })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Да, сбросить/ }));
+    await waitFor(() => {
+      expect(useGameStore.getState().career.totalPlayed).toBe(0);
+    });
+    const state = useGameStore.getState();
+    expect(state.coins).toBe(0);
+    expect(state.stats.pyramid.played).toBe(0);
+    expect(state.sessions).toEqual({});
+    expect(state.achievements).toEqual({});
+    expect(screen.queryByRole('heading', { name: 'Сбросить прогресс?' })).toBeNull();
   });
 });

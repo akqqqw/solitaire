@@ -324,4 +324,37 @@ describe('Пирамида: круги сброса, подсказки и ад�
     const hint = pyramidModule.hint(state);
     expect(pyramidAdapter.hintSlotIds(state, hint)).toEqual(['pyramid-6-0', 'pyramid-6-1']);
   });
+
+  it('клик по сбросу не снимает короля, если выбрана непарная карта', () => {
+    const state = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, ['2c', '3c', '4c', '5c', '6c', '2h', '3h']],
+      waste: ['Qs', 'Kh'],
+    });
+    const selection = { cards: ['clubs-2-0'], slot: 'pyramid-6-0' };
+    const blocked = pyramidAdapter.clickSlot(state, 'pyramid-waste', selection);
+    expect(blocked.type).toBe('clear');
+    expect(state.waste).toHaveLength(2);
+
+    const kingSelection = { cards: ['hearts-13-0'], slot: 'pyramid-waste' };
+    const removed = pyramidAdapter.clickSlot(state, 'pyramid-waste', kingSelection);
+    expect(removed.type).toBe('moves');
+    if (removed.type === 'moves') {
+      expect(removed.moves[0]).toEqual({ type: 'remove', a: { zone: 'waste' } });
+    }
+
+    const pairState = pyramidFixture({
+      pyramid: [null, null, null, null, null, null, ['2c', '3c', '4c', '5c', '6c', '2h', '3h']],
+      waste: ['Qs', '7h'],
+    });
+    const pairSelection = { cards: ['clubs-6-0'], slot: 'pyramid-6-4' };
+    const paired = pyramidAdapter.clickSlot(pairState, 'pyramid-waste', pairSelection);
+    expect(paired.type).toBe('moves');
+    if (paired.type === 'moves') {
+      expect(paired.moves[0]).toEqual({
+        type: 'remove',
+        a: { zone: 'pyramid', row: 6, col: 4 },
+        b: { zone: 'waste' },
+      });
+    }
+  });
 });
