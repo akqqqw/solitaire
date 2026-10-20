@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useGameStore } from './gameStore';
 import { GameSession } from '../core/session/GameSession';
 import { pyramidModule } from '../core/games/pyramid/Pyramid';
 import { pyramidFixture } from '../tests/helpers';
 import { getBoardAdapter } from '../game/adapters/interactions';
+import { loadProfile } from '../services/persistence';
 import {
   createDailyState,
   dateKey,
@@ -105,6 +107,44 @@ describe('Связка состояния с результатами парти
     // Повторный клик по выбранной карте снимает выбор.
     useGameStore.getState().handleCardClick('hearts-6-0');
     expect(useGameStore.getState().selection).toBeNull();
+  });
+
+  it('завершённая партия не сохраняется как «продолжить»', async () => {
+    const won = pyramidFixture();
+    won.removed = Array.from({ length: 7 }, (_, row) =>
+      Array.from({ length: row + 1 }, () => true),
+    );
+    won.won = true;
+    const session = new GameSession(pyramidModule, won, {
+      elapsedMs: 30_000,
+      startTimer: false,
+    });
+    useGameStore.setState({ session, gameState: won, screen: 'game', isWon: true });
+    useGameStore.getState().finalizeWin();
+    expect(useGameStore.getState().stats.pyramid.wins).toBe(1);
+    expect(useGameStore.getState().sessions.pyramid).toBeUndefined();
+
+    useGameStore.getState().flushProfile();
+    const saved = await loadProfile();
+    expect(saved.sessions.pyramid).toBeUndefined();
+    expect(saved.stats.pyramid.wins).toBe(1);
+  });
+
+  it('старое сохранение с завершённой партией заменяется новой', () => {
+    const won = pyramidFixture();
+    won.removed = Array.from({ length: 7 }, (_, row) =>
+      Array.from({ length: row + 1 }, () => true),
+    );
+    won.won = true;
+    const stored = new GameSession(pyramidModule, won, { startTimer: false }).serialize();
+    useGameStore.setState({ sessions: { pyramid: stored } });
+
+    useGameStore.getState().openGame('pyramid');
+    const state = useGameStore.getState();
+    expect(state.session?.state.won).toBe(false);
+    expect(state.session?.state.moves).toBe(0);
+    expect(state.sessions.pyramid).toBeUndefined();
+    expect(state.isWon).toBe(false);
   });
 
   it('начисляет победу, достижения и ежедневный прогресс ровно один раз', () => {

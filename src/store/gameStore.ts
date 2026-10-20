@@ -123,7 +123,9 @@ let lastInterstitial = 0;
 
 function buildProfile(state: AppState): ProfileData {
   const sessions = { ...state.sessions };
-  if (state.session) {
+  // Завершённую партию не сохраняем: после перезагрузки её нельзя
+  // «продолжить», результат уже учтён в статистике.
+  if (state.session && !state.session.state.won) {
     sessions[state.session.gameId] = state.session.serialize();
   }
   return {
@@ -397,6 +399,13 @@ export const useGameStore = create<AppState>((set, get) => ({
     const module = getGameModule(gameId);
     const saved = get().sessions[gameId];
     let session = saved ? GameSession.restore(module, saved) : null;
+    if (session?.state.won) {
+      // Старые сохранения могли содержать завершённую партию.
+      const sessions = { ...get().sessions };
+      delete sessions[gameId];
+      set({ sessions });
+      session = null;
+    }
     if (!session) session = GameSession.create(module);
     const daily = recordDailyEvent(get().daily, { type: 'mode', gameId });
     set({
@@ -745,10 +754,13 @@ export const useGameStore = create<AppState>((set, get) => ({
       gameId: session.gameId,
       hintsUsed: session.hintsUsed,
     });
+    const sessions = { ...get().sessions };
+    delete sessions[session.gameId];
     set({
       stats: result.stats,
       career: result.career,
       daily,
+      sessions,
       ...statusFields(session),
     });
     set({
